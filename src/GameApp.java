@@ -1,4 +1,3 @@
-import javafx.animation.Animation;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.geometry.Bounds;
@@ -10,7 +9,6 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
@@ -48,8 +46,6 @@ class Game extends Pane {
         setBackground(Background.fill(Color.BLACK));
 
         helicopter = new Helicopter(15, 5000, new Point2D(100,100), 25000);
-        helicopter.showLayoutBounds();
-
         getChildren().add(helicopter);
 
         AnimationTimer loop = new AnimationTimer() {
@@ -62,14 +58,10 @@ class Game extends Pane {
                     old = now;
                     return;
                 }
-
                 double FrameTime = (now - old) / 1e9;
                 old = now;
 
                 helicopter.update(FrameTime);
-
-
-
             }
         };
 
@@ -86,10 +78,13 @@ class Game extends Pane {
 
     public void handleKeyPressed(KeyEvent event) {
         keysDown.add(event.getCode());
+
         if(isKeyDown(KeyCode.UP)) helicopter.moveForward();
         if(isKeyDown(KeyCode.DOWN)) helicopter.moveBackward();
         if(isKeyDown(KeyCode.RIGHT)) helicopter.turnRight();
         if(isKeyDown(KeyCode.LEFT)) helicopter.turnLeft();
+        if(event.getCode() == KeyCode.I) helicopter.toggleIgnition();
+        if(event.getCode() == KeyCode.B) helicopter.toggleLayoutBounds();
     }
 
     public void handleKeyReleased(KeyEvent event) {
@@ -103,28 +98,26 @@ class Game extends Pane {
 }
 
 class GameObject extends Group {
-    private Rectangle bounds = new Rectangle();
+    private Rectangle boundingRect = new Rectangle();
 
     public GameObject() {
-        bounds.setFill(Color.TRANSPARENT);
-        bounds.setStrokeWidth(1);
-        bounds.setStroke(Color.YELLOW);
+        boundingRect.setFill(Color.TRANSPARENT);
+        boundingRect.setStrokeWidth(1);
+        boundingRect.setStroke(Color.YELLOW);
+        boundingRect.setVisible(false);
 
-        getChildren().add(bounds);
+        getChildren().add(boundingRect);
     }
 
-    void showLayoutBounds() {
-        bounds.setVisible(true);
+    void toggleLayoutBounds() {
+        boundingRect.setVisible(!boundingRect.isVisible());
     }
-    protected void updateLayoutBounds() {
-        Bounds groupBounds = getLayoutBounds();
-        bounds.setX(groupBounds.getMinX());
-        bounds.setY(groupBounds.getMinY());
-        bounds.setWidth(groupBounds.getWidth());
-        bounds.setHeight(groupBounds.getHeight());
-    }
-    void hideLayoutBounds() {
-        bounds.setVisible(false);
+    protected void updateLayoutBounds(Group object) {
+        Bounds groupBounds = object.getBoundsInParent();
+        boundingRect.setX(groupBounds.getMinX());
+        boundingRect.setY(groupBounds.getMinY());
+        boundingRect.setWidth(groupBounds.getWidth());
+        boundingRect.setHeight(groupBounds.getHeight());
     }
 }
 
@@ -152,6 +145,7 @@ class Helicopter extends GameObject implements Updatable{
     private int water;
     private int fuel;
 
+    Group helicopter;
     private Circle body;
     private Line nose;
 
@@ -165,46 +159,49 @@ class Helicopter extends GameObject implements Updatable{
         nose = new Line(0, 0, 0, bodyRadius * 2);
         nose.setStroke(Color.YELLOW);
 
-        getChildren().addAll(body, nose);
-
-        setTranslateX(initialPosition.getX());
-        setTranslateY(initialPosition.getY());
-
-        updateLayoutBounds();
+        helicopter = new Group(body, nose);
+        getChildren().add(helicopter);
+        helicopter.setTranslateX(initialPosition.getX());
+        helicopter.setTranslateY(initialPosition.getY());
     }
     public void toggleIgnition() {
-        ignition = !ignition;
+        System.out.println(speed);
+        if(speed == 0.0)
+            ignition = !ignition;
     }
 
     public void moveForward() {
-        speed = speed < 10.0 ? speed + 0.1 : speed;
+        if(speed < 10.0 && ignition) speed += 0.1;
     }
 
     public void moveBackward() {
-        speed = speed > -2.0 ? speed - 0.1 : speed;
+        if(speed > -2.0 && ignition) speed -= 0.1;
     }
 
     public void turnLeft() {
-        heading += 15;
+        if(ignition) heading += 15;
     }
 
     public void turnRight() {
-        heading -= 15;
+        if(ignition) heading -= 15;
     }
 
     @Override
     public void update(double FrameTime) {
-        setRotate(heading);
+        helicopter.setRotate(heading);
 
+        //Multiplying the speed by the frame time and a constant to keep the
+        // speed similar between my gaming pc and laptop that run the game on
+        // different fps
         double x, y;
-        x = (Math.cos((heading + 90) * (Math.PI/180)) * (speed*FrameTime*4));
-        y = (Math.sin((heading + 90) * (Math.PI/180)) * (speed*FrameTime*4));
+        x = (Math.cos((heading + 90) * (Math.PI/180)) * (speed*FrameTime*30));
+        y = (Math.sin((heading + 90) * (Math.PI/180)) * (speed*FrameTime*30));
 
-        setTranslateX(getTranslateX() + x);
-        setTranslateY(getTranslateY() + y);
+        helicopter.setTranslateX(helicopter.getTranslateX() + x);
+        helicopter.setTranslateY(helicopter.getTranslateY() + y);
 
-        System.out.println(getTranslateX());
-        System.out.println(getTranslateY());
+        updateLayoutBounds(helicopter);
+
     }
 }
 
