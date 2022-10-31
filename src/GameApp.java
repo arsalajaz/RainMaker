@@ -1,28 +1,29 @@
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.Scene;
-import javafx.scene.control.Label;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
-import javafx.scene.shape.Line;
-import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.*;
+import javafx.scene.text.Text;
 import javafx.stage.Stage;
 
 import java.util.HashSet;
+import java.util.Optional;
 
 public class GameApp extends Application {
-    private static final Point2D WINDOW_SIZE = new Point2D(400, 800);
-
+    public static final Point2D WINDOW_SIZE = new Point2D(400, 800);
     @Override
     public void start(Stage stage) throws Exception {
-        Game gRoot = new Game();
+        Game gRoot = new Game(stage::close);
         Scene scene = new Scene(gRoot, WINDOW_SIZE.getX(), WINDOW_SIZE.getY());
 
         scene.setOnKeyPressed(gRoot::handleKeyPressed);
@@ -32,25 +33,40 @@ public class GameApp extends Application {
         stage.setResizable(false);
         stage.setTitle("Rain Maker v1");
         stage.show();
-    }
 
+    }
     public static void main(String args[]) { launch(args);}
 
 }
 
 class Game extends Pane {
     HashSet<KeyCode> keysDown = new HashSet<>();
+    private static final Point2D COPTER_INITIAL_POSITION =
+            new Point2D(GameApp.WINDOW_SIZE.getX()/2, 100);
 
+    private static final Point2D PAD_INITIAL_POSITION =
+            new Point2D(GameApp.WINDOW_SIZE.getX()/2, 100);
+
+    private static final double COPTER_RADIUS = 15;
+    private static final double PAD_RADIUS = GameApp.WINDOW_SIZE.getX()/10;
     private Helicopter helicopter;
-    public Game() {
+    private Helipad helipad;
+    private Alert gameOverAlert;
+    private Runnable stageClose;
+    public Game(Runnable stageClose) {
         setScaleY(-1);
         setBackground(Background.fill(Color.BLACK));
 
+        this.stageClose = stageClose;
+
+        gameOverAlert = new Alert(Alert.AlertType.CONFIRMATION);
+        gameOverAlert.setTitle("Conformation");
+        gameOverAlert.setHeaderText("Game Over!");
+        gameOverAlert.setContentText("Would you like to play again?");
+
         init();
         AnimationTimer loop = new AnimationTimer() {
-
             double old = -1;
-
             @Override
             public void handle(long now) {
                 if (old < 0) {
@@ -61,6 +77,7 @@ class Game extends Pane {
                 old = now;
 
                 helicopter.update(FrameTime);
+
             }
         };
 
@@ -71,11 +88,27 @@ class Game extends Pane {
 
     }
 
+    void onCrash() {
+        if(!gameOverAlert.isShowing())
+            Platform.runLater(() -> {
+                Optional<ButtonType> result = gameOverAlert.showAndWait();
+                if (result.isPresent() && result.get() == ButtonType.OK) {
+                    init();
+                }
+                if (result.isPresent() && result.get() == ButtonType.CANCEL) {
+                    stageClose.run();
+                }
+            });
+    }
+
     private void init() {
         getChildren().clear();
-        helicopter = new Helicopter(15, 5000, new Point2D(200,100), 25000);
-        Helipad helipad = new Helipad(30, new Point2D(200,100));
-        getChildren().addAll(helicopter, helicopter.getBoundingRect(), helipad);
+        helicopter = new Helicopter(COPTER_RADIUS, 5000,
+                COPTER_INITIAL_POSITION, 25000);
+        helicopter.setOnCrash(this::onCrash);
+        helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
+        getChildren().addAll(helipad, helicopter.getBoundingRect(),
+                helicopter);
     }
 
     public void handleKeyPressed(KeyEvent event) {
@@ -85,7 +118,7 @@ class Game extends Pane {
         if(isKeyDown(KeyCode.DOWN)) helicopter.speedDown();
         if(isKeyDown(KeyCode.RIGHT)) helicopter.turnRight();
         if(isKeyDown(KeyCode.LEFT)) helicopter.turnLeft();
-        if(event.getCode() == KeyCode.I) helicopter.toggleIgnition();
+        if(event.getCode() == KeyCode.I) helicopter.toggleIgnition(helipad);
         if(event.getCode() == KeyCode.B) helicopter.toggleLayoutBounds();
     }
 
@@ -99,7 +132,7 @@ class Game extends Pane {
 
 }
 
-class GameObject extends Group {
+abstract class GameObject extends Group {
     private Rectangle boundingRect = new Rectangle();
 
     public GameObject() {
@@ -127,14 +160,46 @@ class GameObject extends Group {
     Rectangle getBoundingRect() {
         return boundingRect;
     }
+
+    public boolean interest(GameObject object) {
+        return false;
+
+    }
+
+    abstract Shape getShape();
 }
 
 class Pond extends GameObject {
 
+    @Override
+    Shape getShape() {
+        return null;
+    }
 }
 
 class Cloud extends GameObject {
+    Circle cloud;
+    private int saturation = 0;
 
+
+    private final Color color = Color.rgb(155,155,155);
+
+    public Cloud(Point2D position) {
+        cloud = new Circle(50, color);
+        cloud.setTranslateX(position.getX());
+        cloud.setTranslateY(position.getY());
+    }
+    public void addWater() {
+        if(saturation >= 100) return;
+
+        saturation++;
+        cloud.setFill(Color.rgb((int) color.getRed()-saturation,(int)
+                color.getGreen()-saturation,(int)color.getBlue()-saturation));
+    }
+    @Override
+    Shape getShape() {
+        return null;
+    }
 }
 
 class Helipad extends GameObject {
@@ -143,18 +208,16 @@ class Helipad extends GameObject {
     public Helipad(double radius, Point2D intialPosition) {
         pad = new Circle(radius);
         pad.setFill(Color.TRANSPARENT);
-        pad.setStroke(Color.YELLOW);
+        pad.setStroke(Color.GRAY);
         pad.setStrokeWidth(2);
-
 
         Bounds bounds = pad.getBoundsInParent();
         Rectangle border = new Rectangle(bounds.getMinX()-10,
                 bounds.getMinY()-10,
                 bounds.getWidth()+20, bounds.getHeight()+20);
-        border.setStroke(Color.YELLOW);
+        border.setStroke(Color.GRAY);
         border.setStrokeWidth(2);
         border.setFill(Color.TRANSPARENT);
-
 
         getChildren().addAll(pad, border);
 
@@ -162,18 +225,24 @@ class Helipad extends GameObject {
         setTranslateY(intialPosition.getY());
 
     }
+
+    @Override
+    Shape getShape() {
+        return pad;
+    }
 }
 
 class Helicopter extends GameObject implements Updatable {
     private double heading = 0;
     private boolean ignition = false;
+    private boolean landed = true;
     private double speed = 0;
     private int water;
     private int fuel;
+    private Runnable action;
     private GameText fuelLabel;
     private Circle body;
     private Line nose;
-
     public Helicopter(double bodyRadius, int initialWater,
                       Point2D initialPosition, int initialFuel) {
 
@@ -185,20 +254,25 @@ class Helicopter extends GameObject implements Updatable {
         nose.setStrokeWidth(2);
         nose.setStroke(Color.YELLOW);
 
-        fuelLabel = new GameText("Fuel: " + fuel);
-        fuelLabel.setTextFill(Color.YELLOW);
-        fuelLabel.setTranslateX(-30);
-        fuelLabel.setTranslateY(-40);
+        fuelLabel = new GameText();
+        fuelLabel.setFill(Color.YELLOW);
+        fuelLabel.setTranslateY(-bodyRadius - 5);
 
-        getChildren().addAll(body, nose, fuelLabel);
+        getChildren().addAll(body,nose, fuelLabel);
 
         setTranslateX(initialPosition.getX());
         setTranslateY(initialPosition.getY());
     }
-    public void toggleIgnition() {
-        System.out.println(speed);
-        if(speed == 0.0)
-            ignition = !ignition;
+
+    public void toggleIgnition(Helipad helipad) {
+        if(helipad.getBoundsInParent().contains(getBoundsInParent()) && Math.abs(speed) < 0.1 && ignition) {
+            speed = 0;
+            ignition = false;
+            landed = true;
+        } else if(helipad.getBoundsInParent().contains(getBoundsInParent())) {
+            ignition = true;
+            landed = false;
+        }
     }
 
     public void speedUp() {
@@ -230,29 +304,41 @@ class Helicopter extends GameObject implements Updatable {
     public void update(double FrameTime) {
         setRotate(heading);
 
-        //Multiplying the speed by the frame time and a constant to keep the
-        // speed similar between my gaming pc and laptop that run the game on
-        // different fps
-
-        if(fuel > 0) {
+        if(fuel > 0 && ignition) {
             move(FrameTime);
-            fuel -= speed;
-        } else {
-            speed = 0;
+            fuel -= Math.abs((speed+20)*FrameTime*30);
+        } else if(fuel <= 0 && !landed) {
             fuel = 0;
+            landed = true;
+            ignition = false;
+            if(action != null) action.run();
         }
 
-        fuelLabel.setText("Fuel: " + fuel);
-        updateBoundingRect();
 
+        fuelLabel.setText("F: " + fuel);
+        fuelLabel.setTranslateX(-fuelLabel.getLayoutBounds().getWidth()/2);
+
+        updateBoundingRect();
+    }
+
+    public void seed(Cloud cloud) {
+
+    }
+
+    void setOnCrash(Runnable action) {
+        this.action = action;
+    }
+
+    @Override
+    Shape getShape() {
+        return Path.union(body,nose);
     }
 }
 
 
 
-class GameText extends Label {
-    public GameText(String text) {
-        setText(text);
+class GameText extends Text {
+    public GameText() {
         setScaleY(-1);
     }
 }
