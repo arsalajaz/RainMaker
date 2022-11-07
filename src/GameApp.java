@@ -42,8 +42,8 @@ public class GameApp extends Application {
 
 class Game extends Pane {
     HashSet<KeyCode> keysDown = new HashSet<>();
-    private static final Point2D COPTER_INITIAL_POSITION =
-            new Point2D(GameApp.WINDOW_SIZE.getX()/2, 100);
+    private static final Vector COPTER_INITIAL_POS =
+            new Vector(GameApp.WINDOW_SIZE.getX()/2, 100);
 
     private static final Point2D PAD_INITIAL_POSITION =
             new Point2D(GameApp.WINDOW_SIZE.getX()/2, 100);
@@ -53,6 +53,7 @@ class Game extends Pane {
     private Helicopter helicopter;
     private Helipad helipad;
     private Cloud cloud;
+    private Pond pond;
     private Alert gameOverAlert;
     private Runnable stageClose;
     public Game(Runnable stageClose) {
@@ -69,7 +70,8 @@ class Game extends Pane {
         init();
         AnimationTimer loop = new AnimationTimer() {
             double old = -1;
-            double count = 0;
+            double cloudSeedingTime = 0;
+            double rainRate = 0;
             @Override
             public void handle(long now) {
                 if (old < 0) {
@@ -78,13 +80,19 @@ class Game extends Pane {
                 }
                 double FrameTime = (now - old) / 1e9;
                 old = now;
-                count += FrameTime;
+                cloudSeedingTime += FrameTime;
+                rainRate += FrameTime;
 
                 update(FrameTime);
 
-                if(helicopter.interest(cloud) && isKeyDown(KeyCode.SPACE) && count >= 0.1) {
-                    cloud.addWater();
-                    count = 0;
+                if(helicopter.interest(cloud) && isKeyDown(KeyCode.SPACE) && cloudSeedingTime >= 0.1) {
+                    helicopter.seedCloud(cloud);
+                    cloudSeedingTime = 0;
+                }
+
+                if(cloud.isRaining() && rainRate >= 0.1) {
+                    pond.addWater();
+                    rainRate = 0;
                 }
 
             }
@@ -114,16 +122,29 @@ class Game extends Pane {
 
     private void init() {
         getChildren().clear();
-        helicopter = new Helicopter(COPTER_RADIUS, 5000,
-                COPTER_INITIAL_POSITION, 25000);
+        helicopter = new Helicopter(COPTER_RADIUS, 5000, COPTER_INITIAL_POS,
+                25000);
         helicopter.setOnCrash(this::onCrash);
+
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
-        cloud = new Cloud(new Point2D(rand(50,
-                GameApp.WINDOW_SIZE.getX()-50),
-                rand(GameApp.WINDOW_SIZE.getY()/3,GameApp.WINDOW_SIZE.getY())-50));
-        getChildren().addAll(helipad, helipad.getBoundingRect(),cloud,
-                cloud.getBoundingRect(), helicopter.getBoundingRect(),
-                helicopter);
+        cloud = new Cloud(randPoint(50,50));
+        pond = new Pond(randPoint(50,50));
+
+        getChildren().addAll(helipad, pond, cloud, helicopter);
+        getChildren().addAll(
+                pond.getBoundingRect(),
+                helipad.getBoundingRect(),
+                cloud.getBoundingRect(),
+                helicopter.getBoundingRect()
+        );
+    }
+
+    private Point2D randPoint(double width, double height) {
+        double x,y;
+        x = rand(width, GameApp.WINDOW_SIZE.getX()-width);
+        y = rand(2*GameApp.WINDOW_SIZE.getY()/3,
+                GameApp.WINDOW_SIZE.getY())-height;
+        return new Point2D(x,y);
     }
 
     public static double rand(double min, double max) {
@@ -194,22 +215,58 @@ abstract class GameObject extends Group {
     abstract Shape getShape();
 }
 
-class Pond extends GameObject {
+class Pond extends GameObject implements Updatable {
+    private static final double POND_RADIUS_INITIAL = 30;
+    private double pondArea = Math.PI * Math.pow(POND_RADIUS_INITIAL, 2);
+    private int waterLevel = 0;
+    private GameText waterLevelText = new GameText();
+    Circle pondShape = new Circle();
+
+    public Pond(Point2D position) {
+        pondShape.setRadius(Math.sqrt(pondArea / Math.PI));
+        pondShape.setFill(Color.BLUE);
+
+        waterLevelText.setFill(Color.WHITE);
+
+        getChildren().addAll(pondShape, waterLevelText);
+        setTranslateX(position.getX());
+        setTranslateY(position.getY());
+    }
+
+    public void addWater() {
+        pondArea += 50;
+        waterLevel++;
+    }
 
     @Override
     Shape getShape() {
-        return null;
+        return pondShape;
+    }
+
+    @Override
+    public void update(double FrameTime) {
+        pondShape.setRadius(Math.sqrt(pondArea / Math.PI));
+
+        waterLevelText.setText(String.valueOf(waterLevel));
+        waterLevelText.setTranslateX(-waterLevelText.getLayoutBounds()
+                .getWidth()/2);
+        waterLevelText.setTranslateY(waterLevelText.getLayoutBounds()
+                .getHeight()/4);
+
+        updateBoundingRect();
     }
 }
 
 class Cloud extends GameObject implements Updatable {
     Circle cloud;
-
     GameText percentText;
     private int saturation = 0;
 
     public Cloud(Point2D position) {
-        cloud = new Circle(50, Color.rgb(155,155,155));
+        // generate a random radius between 25 and 75
+        double radius = Game.rand(25, 75);
+
+        cloud = new Circle(radius, Color.rgb(155,155,155));
 
         percentText = new GameText();
         percentText.setFill(Color.BLUE);
@@ -220,7 +277,10 @@ class Cloud extends GameObject implements Updatable {
         setTranslateY(position.getY());
 
     }
-    public void addWater() {
+    public boolean isRaining() {
+        return saturation > 0;
+    }
+    public void saturate() {
         if(saturation >= 100) return;
         saturation++;
     }
@@ -276,17 +336,19 @@ class Helipad extends GameObject {
 
 class Helicopter extends GameObject implements Updatable {
     private double heading = 0;
+    private double speed = 0;
+    private Vector position;
     private boolean ignition = false;
     private boolean landed = true;
-    private double speed = 0;
+
     private int water;
     private int fuel;
-    private Runnable action;
+    private Runnable onCrashAction;
     private GameText fuelLabel;
     private Circle body;
     private Line nose;
     public Helicopter(double bodyRadius, int initialWater,
-                      Point2D initialPosition, int initialFuel) {
+                      Vector initialPosition, int initialFuel) {
 
         water = initialWater;
         fuel = initialFuel;
@@ -302,8 +364,7 @@ class Helicopter extends GameObject implements Updatable {
 
         getChildren().addAll(body,nose, fuelLabel);
 
-        setTranslateX(initialPosition.getX());
-        setTranslateY(initialPosition.getY());
+        position = initialPosition;
     }
 
     public void toggleIgnition(Helipad helipad) {
@@ -326,36 +387,40 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     public void turnLeft() {
-        if(ignition) heading += 15;
-    }
-
-    public void turnRight() {
         if(ignition) heading -= 15;
     }
 
-    private void move(double FrameTime) {
-        double x, y;
-        x = (Math.cos((heading + 90) * (Math.PI/180)) * (speed*FrameTime*30));
-        y = (Math.sin((heading + 90) * (Math.PI/180)) * (speed*FrameTime*30));
+    public void turnRight() {
+        if(ignition) heading += 15;
+    }
 
-        setTranslateX(getTranslateX() + x);
-        setTranslateY(getTranslateY() + y);
+    private double convertDegreesToRadians(double degrees) {
+        return degrees * (Math.PI/180);
+    }
+    private double getCartesianAngle() {
+        return (450-heading)%360;
     }
 
     @Override
-    public void update(double FrameTime) {
-        setRotate(heading);
+    public void update(double frameTime) {
+        setRotate(getCartesianAngle() - 90);
+
+        double headingRadians = convertDegreesToRadians(getCartesianAngle());
+        Vector velocity = new Vector(speed, headingRadians, true)
+                .multiply(frameTime*30);
+
+        position = position.add(velocity);
 
         if(fuel > 0 && ignition) {
-            move(FrameTime);
-            fuel -= Math.abs((speed+20)*FrameTime*30);
-        } else if(fuel <= 0 && !landed) {
+            fuel -= Math.abs((speed+20)*frameTime*30);
+        } else if(fuel <= 0 && ignition) {
             fuel = 0;
-            landed = true;
             ignition = false;
-            if(action != null) action.run();
+            if(onCrashAction != null) onCrashAction.run();
         }
 
+        setTranslateX(position.getX());
+        setTranslateY(position.getY());
 
         fuelLabel.setText("F: " + fuel);
         fuelLabel.setTranslateX(-fuelLabel.getLayoutBounds().getWidth()/2);
@@ -363,18 +428,79 @@ class Helicopter extends GameObject implements Updatable {
         updateBoundingRect();
     }
 
-    public void seed(Cloud cloud) {
-
+    public void seedCloud(Cloud cloud) {
+        if(this.interest(cloud)) {
+            cloud.saturate();
+            water--;
+        }
     }
 
     void setOnCrash(Runnable action) {
-        this.action = action;
+        this.onCrashAction = action;
     }
 
     @Override
     Shape getShape() {
         return Path.union(body,nose);
     }
+}
+
+// Vector class that can convert angle and magnitude to x and y components
+// and vice versa
+class Vector {
+    private double x;
+    private double y;
+    private double magnitude;
+    private double angle;
+
+    public Vector(double x, double y) {
+        this.x = x;
+        this.y = y;
+
+        magnitude = Math.sqrt(x*x + y*y);
+        angle = Math.atan2(y, x);
+    }
+    public Vector(double magnitude, double angle, boolean polar) {
+        this.magnitude = magnitude;
+        this.angle = angle;
+
+        x = magnitude * Math.cos(angle);
+        y = magnitude * Math.sin(angle);
+    }
+
+    public double getX() {
+        return x;
+    }
+    public double getY() {
+        return y;
+    }
+    public double getMagnitude() {
+        return magnitude;
+    }
+    public double getAngle() {
+        return angle;
+    }
+    public Vector add(Vector v) {
+        return new Vector(x + v.getX(), y + v.getY());
+    }
+
+    public Vector multiply(double scalar) {
+        return new Vector(x * scalar, y * scalar);
+    }
+
+    public Vector reflectAcrossXAxis() {
+        return new Vector(x, -y);
+    }
+
+    public Vector reflectAcrossYAxis() {
+        return new Vector(-x, y);
+    }
+
+    public String toString() {
+        return String.format("Vector: (x: %.2f, y: %.2f, " +
+                "angle: %.2f, mag: %.2f)", x, y, angle, magnitude);
+    }
+
 }
 
 
