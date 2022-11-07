@@ -1,6 +1,5 @@
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
-import javafx.application.Platform;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
@@ -18,7 +17,6 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 
 import java.util.HashSet;
-import java.util.Optional;
 
 public class GameApp extends Application {
     public static final Point2D WINDOW_SIZE = new Point2D(400, 800);
@@ -56,6 +54,7 @@ class Game extends Pane {
     private Pond pond;
     private Alert gameOverAlert;
     private Runnable stageClose;
+    private AnimationTimer animationTimer;
     public Game(Runnable stageClose) {
         setScaleY(-1);
         setBackground(Background.fill(Color.BLACK));
@@ -68,7 +67,8 @@ class Game extends Pane {
         gameOverAlert.setContentText("Would you like to play again?");
 
         init();
-        AnimationTimer loop = new AnimationTimer() {
+
+        animationTimer = new AnimationTimer() {
             double old = -1;
             double cloudSeedingTime = 0;
             double rainRate = 0;
@@ -98,7 +98,7 @@ class Game extends Pane {
             }
         };
 
-        loop.start();
+        animationTimer.start();
     }
 
     private void update(double FrameTime) {
@@ -107,28 +107,37 @@ class Game extends Pane {
         }
     }
 
-    void onCrash() {
-        if(!gameOverAlert.isShowing())
-            Platform.runLater(() -> {
-                Optional<ButtonType> result = gameOverAlert.showAndWait();
-                if (result.isPresent() && result.get() == ButtonType.OK) {
-                    init();
-                }
-                if (result.isPresent() && result.get() == ButtonType.CANCEL) {
-                    stageClose.run();
-                }
-            });
+    void onCopterCrash() {
+        animationTimer.stop();
+        String msg = "Game Over! Would you like to play again?";
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, msg,
+                ButtonType.YES, ButtonType.NO);
+        alert.setOnHidden(e -> {
+            if (alert.getResult() == ButtonType.YES) {
+                animationTimer.start();
+                init();
+            } else {
+                stageClose.run();
+            }
+        });
+        alert.show();
     }
 
     private void init() {
         getChildren().clear();
+
         helicopter = new Helicopter(COPTER_RADIUS, 5000, COPTER_INITIAL_POS,
                 25000);
-        helicopter.setOnCrash(this::onCrash);
+        helicopter.setOnCrash(this::onCopterCrash);
 
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
-        cloud = new Cloud(randPoint(50,50));
-        pond = new Pond(randPoint(50,50));
+
+        double randCloudRadius = rand(30,60);
+        cloud = new Cloud(randPoint(randCloudRadius,randCloudRadius), randCloudRadius);
+
+        double randPondArea = rand(1500,2500);
+        double pondRadius = Pond.getRadius(randPondArea);
+        pond = new Pond(randPoint(pondRadius,pondRadius), randPondArea);
 
         getChildren().addAll(helipad, pond, cloud, helicopter);
         getChildren().addAll(
@@ -139,6 +148,7 @@ class Game extends Pane {
         );
     }
 
+    // Returns a random point within the top 2/3 of the window
     private Point2D randPoint(double width, double height) {
         double x,y;
         x = rand(width, GameApp.WINDOW_SIZE.getX()-width);
@@ -216,21 +226,29 @@ abstract class GameObject extends Group {
 }
 
 class Pond extends GameObject implements Updatable {
-    private static final double POND_RADIUS_INITIAL = 30;
-    private double pondArea = Math.PI * Math.pow(POND_RADIUS_INITIAL, 2);
+    private double pondArea;
     private int waterLevel = 0;
     private GameText waterLevelText = new GameText();
     Circle pondShape = new Circle();
 
-    public Pond(Point2D position) {
-        pondShape.setRadius(Math.sqrt(pondArea / Math.PI));
+    public Pond(Point2D initialPosition, double initialArea) {
+        pondArea = initialArea;
+        pondShape.setRadius(getRadius());
         pondShape.setFill(Color.BLUE);
 
         waterLevelText.setFill(Color.WHITE);
 
         getChildren().addAll(pondShape, waterLevelText);
-        setTranslateX(position.getX());
-        setTranslateY(position.getY());
+        setTranslateX(initialPosition.getX());
+        setTranslateY(initialPosition.getY());
+    }
+
+    public double getRadius() {
+    	return Math.sqrt(pondArea / Math.PI);
+    }
+
+    public static double getRadius(double area) {
+    	return Math.sqrt(area / Math.PI);
     }
 
     public void addWater() {
@@ -262,11 +280,8 @@ class Cloud extends GameObject implements Updatable {
     GameText percentText;
     private int saturation = 0;
 
-    public Cloud(Point2D position) {
-        // generate a random radius between 25 and 75
-        double radius = Game.rand(25, 75);
-
-        cloud = new Circle(radius, Color.rgb(155,155,155));
+    public Cloud(Point2D position, double initialRadius) {
+        cloud = new Circle(initialRadius, Color.rgb(155,155,155));
 
         percentText = new GameText();
         percentText.setFill(Color.BLUE);
@@ -275,7 +290,6 @@ class Cloud extends GameObject implements Updatable {
 
         setTranslateX(position.getX());
         setTranslateY(position.getY());
-
     }
     public boolean isRaining() {
         return saturation > 0;
@@ -429,10 +443,9 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     public void seedCloud(Cloud cloud) {
-        if(this.interest(cloud)) {
-            cloud.saturate();
-            water--;
-        }
+        cloud.saturate();
+        water--;
+
     }
 
     void setOnCrash(Runnable action) {
