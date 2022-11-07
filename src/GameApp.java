@@ -90,7 +90,8 @@ class Game extends Pane {
                     cloudSeedingTime = 0;
                 }
 
-                if(cloud.isRaining() && rainRate >= 0.1) {
+                if(cloud.isRaining() && rainRate >= 0.2) {
+                    cloud.rain();
                     pond.addWater();
                     rainRate = 0;
                 }
@@ -263,7 +264,7 @@ class Pond extends GameObject implements Updatable {
 
     @Override
     public void update(double FrameTime) {
-        pondShape.setRadius(Math.sqrt(pondArea / Math.PI));
+        pondShape.setRadius(getRadius());
 
         waterLevelText.setText(String.valueOf(waterLevel));
         waterLevelText.setTranslateX(-waterLevelText.getLayoutBounds()
@@ -293,6 +294,10 @@ class Cloud extends GameObject implements Updatable {
     }
     public boolean isRaining() {
         return saturation > 0;
+    }
+
+    public void rain() {
+        saturation--;
     }
     public void saturate() {
         if(saturation >= 100) return;
@@ -515,8 +520,6 @@ class Vector {
     }
 
 }
-
-
 
 class GameText extends Text {
     public GameText() {
