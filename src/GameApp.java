@@ -7,22 +7,27 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.*;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.Shape;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 
 import java.util.HashSet;
 
 public class GameApp extends Application {
-    public static final Point2D WINDOW_SIZE = new Point2D(400, 800);
+    public static final Point2D WINDOW_SIZE = new Point2D(800, 800);
     @Override
     public void start(Stage stage) throws Exception {
         Game gRoot = new Game(stage::close);
+
         Scene scene = new Scene(gRoot, WINDOW_SIZE.getX(), WINDOW_SIZE.getY());
 
         scene.setOnKeyPressed(gRoot::handleKeyPressed);
@@ -140,12 +145,15 @@ class Game extends Pane {
         double pondRadius = Pond.getRadius(randPondArea);
         pond = new Pond(randPoint(pondRadius,pondRadius), randPondArea);
 
+        getChildren().add(new ImageBackground(GameApp.WINDOW_SIZE.getX(),
+                GameApp.WINDOW_SIZE.getY()));
         getChildren().addAll(helipad, pond, cloud, helicopter);
         getChildren().addAll(
                 pond.getBoundingRect(),
                 helipad.getBoundingRect(),
                 cloud.getBoundingRect(),
                 helicopter.getBoundingRect()
+
         );
     }
 
@@ -366,11 +374,17 @@ class Helicopter extends GameObject implements Updatable {
     private GameText fuelLabel;
     private Circle body;
     private Line nose;
+
+    private HeloBody heloBody;
+    private HeloBlade heloBlade;
     public Helicopter(double bodyRadius, int initialWater,
                       Vector initialPosition, int initialFuel) {
 
         water = initialWater;
         fuel = initialFuel;
+
+        heloBody = new HeloBody();
+        heloBlade = new HeloBlade();
 
         body = new Circle(bodyRadius, Color.YELLOW);
         nose = new Line(0, 0, 0, bodyRadius * 2);
@@ -379,22 +393,24 @@ class Helicopter extends GameObject implements Updatable {
 
         fuelLabel = new GameText();
         fuelLabel.setFill(Color.YELLOW);
-        fuelLabel.setTranslateY(-bodyRadius - 5);
 
-        getChildren().addAll(body,nose, fuelLabel);
+        getChildren().addAll(heloBody, heloBlade);
 
         position = initialPosition;
     }
 
     public void toggleIgnition(Helipad helipad) {
-        if(helipad.getBoundsInParent().contains(getBoundsInParent()) && Math.abs(speed) < 0.1 && ignition) {
+        if(Math.abs(speed) < 0.1 && ignition) {
             speed = 0;
             ignition = false;
             landed = true;
-        } else if(helipad.getBoundsInParent().contains(getBoundsInParent())) {
+            heloBlade.stopSpinning();
+        } else {
             ignition = true;
             landed = false;
+            heloBlade.startSpinning();
         }
+
     }
 
     public void speedUp() {
@@ -420,6 +436,10 @@ class Helicopter extends GameObject implements Updatable {
         return (450-heading)%360;
     }
 
+    private void move() {
+
+    }
+
     @Override
     public void update(double frameTime) {
         setRotate(getCartesianAngle() - 90);
@@ -442,7 +462,6 @@ class Helicopter extends GameObject implements Updatable {
         setTranslateY(position.getY());
 
         fuelLabel.setText("F: " + fuel);
-        fuelLabel.setTranslateX(-fuelLabel.getLayoutBounds().getWidth()/2);
 
         updateBoundingRect();
     }
@@ -462,6 +481,123 @@ class Helicopter extends GameObject implements Updatable {
         return Path.union(body,nose);
     }
 }
+
+class HeloBody extends ImageView {
+    public HeloBody() {
+        super(new Image("/Assets/HeloBody.png"));
+        setScaleY(-1);
+        setFitWidth(150);
+        setFitHeight(150);
+    }
+}
+
+class ImageBackground extends Pane {
+    private ImageView background;
+    public ImageBackground(double width, double height) {
+        background = new ImageView(new Image("/Assets/DesertBG.jpeg"));
+        background.setFitWidth(width);
+        background.setFitHeight(height);
+        getChildren().add(background);
+    }
+
+}
+
+class HeloBlade extends ImageView {
+    private static final double MAX_ROTATIONAL_SPEED = 1000;
+    private AnimationTimer loop;
+    private double rotationalSpeed;
+    private boolean maxSpeedAchieved = false;
+    private boolean isRunningFirstTime = true;
+    private Runnable onMaxSpeed;
+    public HeloBlade() {
+        super(new Image("/Assets/blades.png"));
+        setScaleY(-1);
+        setRotate(45);
+        setFitHeight(150);
+        setFitWidth(150);
+        loop = new AnimationTimer() {
+            double old = 0;
+            double elapsed = 0;
+
+            @Override
+            public void handle(long now) {
+                if(old == 0) {
+                    old = now;
+                    return;
+                }
+                double frameTime = (now - old) / 1e9;
+                old = now;
+                elapsed += frameTime;
+
+                setRotate(getRotate() - rotationalSpeed*frameTime);
+
+                if(elapsed > 0.5) {
+                    elapsed = 0;
+                    rotationalSpeed += 50;
+                    if(rotationalSpeed > MAX_ROTATIONAL_SPEED) {
+                        rotationalSpeed = MAX_ROTATIONAL_SPEED;
+                        maxSpeedAchieved = true;
+                    }
+                }
+                if(maxSpeedAchieved && isRunningFirstTime && onMaxSpeed != null) {
+                    onMaxSpeed.run();
+                    isRunningFirstTime = false;
+                }
+            }
+        };
+    }
+
+    public void startSpinning() {
+        if(rotationalSpeed > 0) return;
+        loop.start();
+    }
+
+    public void setOnMaxSpeed(Runnable action) {
+        this.onMaxSpeed = action;
+    }
+
+    public void stopSpinning() {
+        rotationalSpeed = 0;
+        maxSpeedAchieved = false;
+        isRunningFirstTime = true;
+        loop.stop();
+    }
+}
+
+//implement state pattern for helicopter
+abstract class HelicopterState {
+    protected Helicopter helicopter;
+    public HelicopterState(Helicopter helicopter) {
+        this.helicopter = helicopter;
+    }
+
+}
+
+class HelicopterOffState extends HelicopterState {
+    public HelicopterOffState(Helicopter helicopter) {
+        super(helicopter);
+    }
+
+}
+
+class HelicopterReadyState extends HelicopterState {
+    public HelicopterReadyState(Helicopter helicopter) {
+        super(helicopter);
+    }
+}
+
+class HelicopterStartingState extends HelicopterState {
+    public HelicopterStartingState(Helicopter helicopter) {
+        super(helicopter);
+    }
+}
+
+class HelicopterStoppingState extends HelicopterState {
+    public HelicopterStoppingState(Helicopter helicopter) {
+        super(helicopter);
+    }
+}
+
 
 // Vector class that can convert angle and magnitude to x and y components
 // and vice versa
@@ -515,8 +651,10 @@ class Vector {
     }
 
     public String toString() {
-        return String.format("Vector: (x: %.2f, y: %.2f, " +
-                "angle: %.2f, mag: %.2f)", x, y, angle, magnitude);
+        return String.format(
+                "Vector: (x: %.2f, y: %.2f, angle: %.2f, mag: %.2f)",
+                x, y, angle, magnitude
+        );
     }
 
 }
