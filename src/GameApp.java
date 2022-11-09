@@ -362,6 +362,13 @@ class Helipad extends GameObject {
 }
 
 class Helicopter extends GameObject implements Updatable {
+    private HelicopterState currState;
+
+    private HelicopterState offState;
+    private HelicopterState startingState;
+    private HelicopterState readyState;
+    private HelicopterState stoppingState;
+
     private double heading = 0;
     private double speed = 0;
     private Vector position;
@@ -380,6 +387,8 @@ class Helicopter extends GameObject implements Updatable {
     public Helicopter(double bodyRadius, int initialWater,
                       Vector initialPosition, int initialFuel) {
 
+
+
         water = initialWater;
         fuel = initialFuel;
 
@@ -397,6 +406,14 @@ class Helicopter extends GameObject implements Updatable {
         getChildren().addAll(heloBody, heloBlade);
 
         position = initialPosition;
+
+        offState = new HelicopterOffState(this);
+        startingState = new HelicopterStartingState(this);
+        readyState = new HelicopterReadyState(this);
+        stoppingState = new HelicopterStoppingState(this);
+
+
+        currState = new HelicopterOffState(this);
     }
 
     public void toggleIgnition(Helipad helipad) {
@@ -476,18 +493,41 @@ class Helicopter extends GameObject implements Updatable {
         this.onCrashAction = action;
     }
 
+    public void setState(HelicopterState currState) {
+        this.currState = currState;
+    }
+
+    public HelicopterState getState() {
+        return currState;
+    }
+
+
     @Override
     Shape getShape() {
         return Path.union(body,nose);
     }
+
+    public HelicopterState getOffState() {return offState; }
+    public HelicopterState getStartingState() { return startingState;}
+    public HelicopterState getReadyState() { return readyState; }
+    public HelicopterState getStoppingState() { return stoppingState; }
+
+    public HeloBlade getBlade() {
+    	return heloBlade;
+    }
+
+    public double getSpeed() {
+    	return speed;
+    }
+
 }
 
 class HeloBody extends ImageView {
     public HeloBody() {
         super(new Image("/Assets/HeloBody.png"));
         setScaleY(-1);
-        setFitWidth(150);
-        setFitHeight(150);
+        setFitWidth(120);
+        setFitHeight(120);
     }
 }
 
@@ -504,21 +544,20 @@ class ImageBackground extends Pane {
 
 class HeloBlade extends ImageView {
     private static final double MAX_ROTATIONAL_SPEED = 1000;
-    private AnimationTimer loop;
     private double rotationalSpeed;
+    private boolean isEngineRunning = false;
     private boolean maxSpeedAchieved = false;
-    private boolean isRunningFirstTime = true;
-    private Runnable onMaxSpeed;
+    private Runnable onMaxRotationalSpeed;
     public HeloBlade() {
         super(new Image("/Assets/blades.png"));
         setScaleY(-1);
         setRotate(45);
-        setFitHeight(150);
-        setFitWidth(150);
-        loop = new AnimationTimer() {
+        setFitHeight(120);
+        setFitWidth(120);
+        AnimationTimer loop = new AnimationTimer() {
             double old = 0;
             double elapsed = 0;
-
+            boolean isRunningFirstTime = true;
             @Override
             public void handle(long now) {
                 if(old == 0) {
@@ -533,34 +572,41 @@ class HeloBlade extends ImageView {
 
                 if(elapsed > 0.5) {
                     elapsed = 0;
-                    rotationalSpeed += 50;
+
+                    int speedMultiplier = isEngineRunning ? 1 : -1;
+                    rotationalSpeed += 50*speedMultiplier;
+
                     if(rotationalSpeed > MAX_ROTATIONAL_SPEED) {
                         rotationalSpeed = MAX_ROTATIONAL_SPEED;
                         maxSpeedAchieved = true;
+                    } else if (rotationalSpeed < 0) {
+                        rotationalSpeed = 0;
+                        maxSpeedAchieved = false;
+                        isRunningFirstTime = false;
                     }
                 }
-                if(maxSpeedAchieved && isRunningFirstTime && onMaxSpeed != null) {
-                    onMaxSpeed.run();
+                if(maxSpeedAchieved && isRunningFirstTime && onMaxRotationalSpeed != null) {
+                    onMaxRotationalSpeed.run();
                     isRunningFirstTime = false;
                 }
             }
         };
+
+        loop.start();
     }
 
     public void startSpinning() {
         if(rotationalSpeed > 0) return;
-        loop.start();
+        isEngineRunning = true;
+
     }
 
-    public void setOnMaxSpeed(Runnable action) {
-        this.onMaxSpeed = action;
+    public void setOnMaxRotationalSpeed(Runnable action) {
+        this.onMaxRotationalSpeed = action;
     }
 
     public void stopSpinning() {
-        rotationalSpeed = 0;
-        maxSpeedAchieved = false;
-        isRunningFirstTime = true;
-        loop.stop();
+        isEngineRunning = false;
     }
 }
 
@@ -571,6 +617,14 @@ abstract class HelicopterState {
         this.helicopter = helicopter;
     }
 
+    abstract void startEngine();
+    abstract void stopEngine();
+    abstract void speedUp();
+    abstract void speedDown();
+    abstract void turnLeft();
+    abstract void turnRight();
+    abstract void seedCloud(Cloud cloud);
+
 }
 
 class HelicopterOffState extends HelicopterState {
@@ -578,23 +632,151 @@ class HelicopterOffState extends HelicopterState {
         super(helicopter);
     }
 
+    @Override
+    void startEngine() {
+        helicopter.setState(helicopter.getStartingState());
+        helicopter.getState().startEngine();
+    }
+
+    @Override
+    void stopEngine() { /* Do nothing - engine already off */}
+
+    @Override
+    void speedUp() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void speedDown() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void turnLeft() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void turnRight() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void seedCloud(Cloud cloud) { /* Do nothing - helicopter is off */}
+
+}
+
+class HelicopterStartingState extends HelicopterState {
+    private HeloBlade heloBlade;
+    public HelicopterStartingState(Helicopter helicopter) {
+        super(helicopter);
+        heloBlade = helicopter.getBlade();
+        heloBlade.setOnMaxRotationalSpeed(() ->
+                helicopter.setState(helicopter.getReadyState())
+        );
+    }
+
+    @Override
+    void startEngine() {
+        heloBlade.startSpinning();
+    }
+
+    @Override
+    void stopEngine() {
+        heloBlade.stopSpinning();
+        // Future: wait heloBlade to stop spinning before changing state
+        helicopter.setState(helicopter.getStoppingState());
+    }
+
+    @Override
+    void speedUp() { /* Do nothing - helicopter is starting */ }
+
+    @Override
+    void speedDown() { /* Do nothing - helicopter is starting */}
+
+    @Override
+    void turnLeft() { /* Do nothing - helicopter is starting */}
+
+    @Override
+    void turnRight() { /* Do nothing - helicopter is starting */ }
+
+    @Override
+    void seedCloud(Cloud cloud) { /* Do nothing - helicopter is starting */}
 }
 
 class HelicopterReadyState extends HelicopterState {
     public HelicopterReadyState(Helicopter helicopter) {
         super(helicopter);
     }
-}
 
-class HelicopterStartingState extends HelicopterState {
-    public HelicopterStartingState(Helicopter helicopter) {
-        super(helicopter);
+    @Override
+    void startEngine() {
+        //do nothing - engine is already running
+    }
+
+    @Override
+    void stopEngine() {
+        helicopter.getBlade().stopSpinning();
+        helicopter.setState(helicopter.getStoppingState());
+    }
+
+    @Override
+    void speedUp() {
+
+    }
+
+    @Override
+    void speedDown() {
+
+    }
+
+    @Override
+    void turnLeft() {
+
+    }
+
+    @Override
+    void turnRight() {
+
+    }
+
+    @Override
+    void seedCloud(Cloud cloud) {
+
     }
 }
+
 
 class HelicopterStoppingState extends HelicopterState {
     public HelicopterStoppingState(Helicopter helicopter) {
         super(helicopter);
+    }
+
+    @Override
+    void startEngine() {
+
+    }
+
+    @Override
+    void stopEngine() {
+
+    }
+
+    @Override
+    void speedUp() {
+
+    }
+
+    @Override
+    void speedDown() {
+
+    }
+
+    @Override
+    void turnLeft() {
+
+    }
+
+    @Override
+    void turnRight() {
+
+    }
+
+    @Override
+    void seedCloud(Cloud cloud) {
+
     }
 }
 
