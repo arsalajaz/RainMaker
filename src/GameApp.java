@@ -18,17 +18,20 @@ import javafx.scene.shape.*;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
 import javafx.scene.text.Text;
+import javafx.scene.transform.Rotate;
+import javafx.scene.transform.Scale;
+import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
 import java.util.HashSet;
 
 public class GameApp extends Application {
-    public static final Point2D WINDOW_SIZE = new Point2D(800, 800);
+    public static final int GAME_WIDTH = 800;
+    public static final int GAME_HEIGHT = 800;
     @Override
     public void start(Stage stage) throws Exception {
         Game gRoot = new Game(stage::close);
-
-        Scene scene = new Scene(gRoot, WINDOW_SIZE.getX(), WINDOW_SIZE.getY());
+        Scene scene = new Scene(gRoot, GAME_WIDTH, GAME_HEIGHT);
 
         scene.setOnKeyPressed(gRoot::handleKeyPressed);
         scene.setOnKeyReleased(gRoot::handleKeyReleased);
@@ -40,19 +43,18 @@ public class GameApp extends Application {
 
     }
     public static void main(String args[]) { launch(args);}
-
 }
 
 class Game extends Pane {
     HashSet<KeyCode> keysDown = new HashSet<>();
     private static final Vector COPTER_INITIAL_POS =
-            new Vector(GameApp.WINDOW_SIZE.getX()/2, 100);
+            new Vector(GameApp.GAME_WIDTH/2, 100);
 
     private static final Point2D PAD_INITIAL_POSITION =
-            new Point2D(GameApp.WINDOW_SIZE.getX()/2, 100);
+            new Point2D(GameApp.GAME_WIDTH/2, 100);
 
     private static final double COPTER_RADIUS = 15;
-    private static final double PAD_RADIUS = GameApp.WINDOW_SIZE.getX()/10;
+    private static final double PAD_RADIUS = GameApp.GAME_WIDTH/10;
     private Helicopter helicopter;
     private Helipad helipad;
     private Cloud cloud;
@@ -90,7 +92,8 @@ class Game extends Pane {
 
                 update(FrameTime);
 
-                if(helicopter.interest(cloud) && isKeyDown(KeyCode.SPACE) && cloudSeedingTime >= 0.1) {
+                if(/*helicopter.interest(cloud) && */ isKeyDown(KeyCode.SPACE)
+                && cloudSeedingTime >= 0.1) {
                     helicopter.seedCloud(cloud);
                     cloudSeedingTime = 0;
                 }
@@ -132,8 +135,7 @@ class Game extends Pane {
     private void init() {
         getChildren().clear();
 
-        helicopter = new Helicopter(COPTER_RADIUS, 5000, COPTER_INITIAL_POS,
-                25000);
+        helicopter = new Helicopter(5000, COPTER_INITIAL_POS, 25000);
         helicopter.setOnCrash(this::onCopterCrash);
 
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
@@ -145,8 +147,8 @@ class Game extends Pane {
         double pondRadius = Pond.getRadius(randPondArea);
         pond = new Pond(randPoint(pondRadius,pondRadius), randPondArea);
 
-        getChildren().add(new ImageBackground(GameApp.WINDOW_SIZE.getX(),
-                GameApp.WINDOW_SIZE.getY()));
+        getChildren().add(new ImageBackground(GameApp.GAME_WIDTH,
+                GameApp.GAME_HEIGHT));
         getChildren().addAll(helipad, pond, cloud, helicopter);
         getChildren().addAll(
                 pond.getBoundingRect(),
@@ -160,9 +162,8 @@ class Game extends Pane {
     // Returns a random point within the top 2/3 of the window
     private Point2D randPoint(double width, double height) {
         double x,y;
-        x = rand(width, GameApp.WINDOW_SIZE.getX()-width);
-        y = rand(2*GameApp.WINDOW_SIZE.getY()/3,
-                GameApp.WINDOW_SIZE.getY())-height;
+        x = rand(width, GameApp.GAME_WIDTH-width);
+        y = rand(2*GameApp.GAME_HEIGHT/3, GameApp.GAME_HEIGHT) - height;
         return new Point2D(x,y);
     }
 
@@ -177,7 +178,12 @@ class Game extends Pane {
         if(isKeyDown(KeyCode.DOWN)) helicopter.speedDown();
         if(isKeyDown(KeyCode.RIGHT)) helicopter.turnRight();
         if(isKeyDown(KeyCode.LEFT)) helicopter.turnLeft();
-        if(event.getCode() == KeyCode.I) helicopter.toggleIgnition(helipad);
+        if(event.getCode() == KeyCode.I) {
+            if(helicopter.getState() == helicopter.getOffState())
+                helicopter.startEngine(helipad);
+            else
+                helicopter.stopEngine();
+        }
         if(event.getCode() == KeyCode.B) {
             for(Node node : getChildren()) {
                 if(node instanceof GameObject)
@@ -199,12 +205,34 @@ class Game extends Pane {
 
 abstract class GameObject extends Group {
     private Rectangle boundingRect = new Rectangle();
+    protected Translate myTranslation;
+    protected Rotate myRotation;
+    protected Scale myScale;
 
     public GameObject() {
         boundingRect.setFill(Color.TRANSPARENT);
         boundingRect.setStrokeWidth(1);
         boundingRect.setStroke(Color.YELLOW);
         boundingRect.setVisible(false);
+
+        myTranslation = new Translate();
+        myRotation = new Rotate();
+        myScale = new Scale();
+        this.getTransforms().addAll(myTranslation,myRotation,myScale);
+    }
+
+    public void rotate(double degrees) {
+        myRotation.setAngle(degrees);
+        myRotation.setPivotX(getLayoutBounds().getWidth()/2);
+        myRotation.setPivotY(getLayoutBounds().getWidth()/2);
+    }
+    public void scale(double sx, double sy) {
+        myScale.setX(sx);
+        myScale.setY(sy);
+    }
+    public void translate(double tx, double ty) {
+        myTranslation.setX(tx);
+        myTranslation.setY(ty);
     }
 
     void toggleBoundingBox() {
@@ -362,6 +390,13 @@ class Helipad extends GameObject {
 }
 
 class Helicopter extends GameObject implements Updatable {
+    private HelicopterState currState;
+
+    private HelicopterState offState;
+    private HelicopterState startingState;
+    private HelicopterState readyState;
+    private HelicopterState stoppingState;
+
     private double heading = 0;
     private double speed = 0;
     private Vector position;
@@ -372,62 +407,65 @@ class Helicopter extends GameObject implements Updatable {
     private int fuel;
     private Runnable onCrashAction;
     private GameText fuelLabel;
-    private Circle body;
-    private Line nose;
-
     private HeloBody heloBody;
     private HeloBlade heloBlade;
-    public Helicopter(double bodyRadius, int initialWater,
-                      Vector initialPosition, int initialFuel) {
-
+    public Helicopter(int initialWater, Vector initialPosition, int initialFuel)
+    {
         water = initialWater;
         fuel = initialFuel;
 
         heloBody = new HeloBody();
         heloBlade = new HeloBlade();
 
-        body = new Circle(bodyRadius, Color.YELLOW);
-        nose = new Line(0, 0, 0, bodyRadius * 2);
-        nose.setStrokeWidth(2);
-        nose.setStroke(Color.YELLOW);
-
         fuelLabel = new GameText();
         fuelLabel.setFill(Color.YELLOW);
 
-        getChildren().addAll(heloBody, heloBlade);
+        getChildren().addAll(heloBody, heloBlade, fuelLabel);
 
         position = initialPosition;
+
+        offState = new HelicopterOffState(this);
+        startingState = new HelicopterStartingState(this);
+        readyState = new HelicopterReadyState(this);
+        stoppingState = new HelicopterStoppingState(this);
+
+        currState = offState;
     }
 
-    public void toggleIgnition(Helipad helipad) {
-        if(Math.abs(speed) < 0.1 && ignition) {
-            speed = 0;
-            ignition = false;
-            landed = true;
-            heloBlade.stopSpinning();
-        } else {
-            ignition = true;
-            landed = false;
-            heloBlade.startSpinning();
-        }
+    public void startEngine(Helipad helipad) {
+//        if(Math.abs(speed) < 0.1 && ignition) {
+//            speed = 0;
+//            ignition = false;
+//            landed = true;
+//            heloBlade.stopSpinning();
+//        } else {
+//            ignition = true;
+//            landed = false;
+//            heloBlade.startSpinning();
+//        }
+        currState.startEngine();
+    }
 
+    public void stopEngine() {
+        currState.stopEngine();
     }
 
     public void speedUp() {
-        if(speed < 10.0 && ignition) speed += 0.1;
+        currState.speedUp();
     }
 
     public void speedDown() {
-        if(speed > -2.0 && ignition) speed -= 0.1;
+        currState.speedDown();
     }
 
     public void turnLeft() {
-        if(ignition) heading -= 15;
+        currState.turnLeft();
     }
 
     public void turnRight() {
-        if(ignition) heading += 15;
+        currState.turnRight();
     }
+
 
     private double convertDegreesToRadians(double degrees) {
         return degrees * (Math.PI/180);
@@ -437,33 +475,39 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     private void move() {
+        rotate(getCartesianAngle() - 90);
+        translate(position.getX(),position.getY());
+    }
 
+    private void calculateNewPosition(double frameTime) {
+        double angle = convertDegreesToRadians(getCartesianAngle());
+        Vector velocity = new Vector(speed, angle, true)
+                .multiply(frameTime*30);
+
+        position = position.add(velocity);
     }
 
     @Override
     public void update(double frameTime) {
-        setRotate(getCartesianAngle() - 90);
+        calculateNewPosition(frameTime);
+        move();
+        updateFuelLabel();
+        updateBoundingRect();
 
-        double headingRadians = convertDegreesToRadians(getCartesianAngle());
-        Vector velocity = new Vector(speed, headingRadians, true)
-                .multiply(frameTime*30);
+        fuel -= Math.abs((speed)*frameTime*30);
 
-        position = position.add(velocity);
-
-        if(fuel > 0 && ignition) {
-            fuel -= Math.abs((speed+20)*frameTime*30);
-        } else if(fuel <= 0 && ignition) {
+        if(fuel <= 0 && ignition) {
             fuel = 0;
             ignition = false;
             if(onCrashAction != null) onCrashAction.run();
         }
 
-        setTranslateX(position.getX());
-        setTranslateY(position.getY());
 
+    }
+
+    private void updateFuelLabel() {
         fuelLabel.setText("F: " + fuel);
-
-        updateBoundingRect();
+        fuelLabel.setTranslateX(getLayoutBounds().getWidth()/2 - fuelLabel.getLayoutBounds().getWidth()/2);
     }
 
     public void seedCloud(Cloud cloud) {
@@ -476,9 +520,40 @@ class Helicopter extends GameObject implements Updatable {
         this.onCrashAction = action;
     }
 
+    public void setState(HelicopterState currState) {
+        this.currState = currState;
+    }
+
+    public HelicopterState getState() {
+        return currState;
+    }
+
+
     @Override
     Shape getShape() {
-        return Path.union(body,nose);
+        return null;
+    }
+
+    public void setSpeed(double speed) {
+        this.speed = speed;
+    }
+    public double getSpeed() {
+        return speed;
+    }
+    public void setHeading(double heading) {
+        this.heading = heading;
+    }
+    public double getHeading() {
+        return heading;
+    }
+
+    public HelicopterState getOffState() {return offState; }
+    public HelicopterState getStartingState() { return startingState;}
+    public HelicopterState getReadyState() { return readyState; }
+    public HelicopterState getStoppingState() { return stoppingState; }
+
+    public HeloBlade getBlade() {
+    	return heloBlade;
     }
 }
 
@@ -486,8 +561,8 @@ class HeloBody extends ImageView {
     public HeloBody() {
         super(new Image("/Assets/HeloBody.png"));
         setScaleY(-1);
-        setFitWidth(150);
-        setFitHeight(150);
+        setFitWidth(120);
+        setFitHeight(120);
     }
 }
 
@@ -504,18 +579,22 @@ class ImageBackground extends Pane {
 
 class HeloBlade extends ImageView {
     private static final double MAX_ROTATIONAL_SPEED = 1000;
-    private AnimationTimer loop;
     private double rotationalSpeed;
+    private boolean isEngineRunning = false;
     private boolean maxSpeedAchieved = false;
-    private boolean isRunningFirstTime = true;
-    private Runnable onMaxSpeed;
+    private Runnable onMaxRotationalSpeed;
+
+    boolean isRunningFirstTime = true;
     public HeloBlade() {
         super(new Image("/Assets/blades.png"));
         setScaleY(-1);
         setRotate(45);
-        setFitHeight(150);
-        setFitWidth(150);
-        loop = new AnimationTimer() {
+        setTranslateX(20);
+        setTranslateY(20);
+
+        setFitHeight(80);
+        setFitWidth(80);
+        AnimationTimer loop = new AnimationTimer() {
             double old = 0;
             double elapsed = 0;
 
@@ -533,34 +612,48 @@ class HeloBlade extends ImageView {
 
                 if(elapsed > 0.5) {
                     elapsed = 0;
-                    rotationalSpeed += 50;
-                    if(rotationalSpeed > MAX_ROTATIONAL_SPEED) {
+
+                    int speedMultiplier = isEngineRunning ? 1 : -1;
+                    rotationalSpeed += 100*speedMultiplier;
+
+                    if(rotationalSpeed >= MAX_ROTATIONAL_SPEED) {
                         rotationalSpeed = MAX_ROTATIONAL_SPEED;
                         maxSpeedAchieved = true;
+                    } else {
+                        maxSpeedAchieved = false;
+                    }
+
+                    if (rotationalSpeed < 0) {
+                        rotationalSpeed = 0;
+                        maxSpeedAchieved = false;
+                        isRunningFirstTime = true;
                     }
                 }
-                if(maxSpeedAchieved && isRunningFirstTime && onMaxSpeed != null) {
-                    onMaxSpeed.run();
+
+                if(maxSpeedAchieved && isRunningFirstTime &&
+                        onMaxRotationalSpeed != null) {
+                    onMaxRotationalSpeed.run();
                     isRunningFirstTime = false;
                 }
+
             }
         };
+
+        loop.start();
     }
 
     public void startSpinning() {
         if(rotationalSpeed > 0) return;
-        loop.start();
+        isEngineRunning = true;
+
     }
 
-    public void setOnMaxSpeed(Runnable action) {
-        this.onMaxSpeed = action;
+    public void setOnMaxRotationalSpeed(Runnable action) {
+        this.onMaxRotationalSpeed = action;
     }
 
     public void stopSpinning() {
-        rotationalSpeed = 0;
-        maxSpeedAchieved = false;
-        isRunningFirstTime = true;
-        loop.stop();
+        isEngineRunning = false;
     }
 }
 
@@ -571,6 +664,14 @@ abstract class HelicopterState {
         this.helicopter = helicopter;
     }
 
+    abstract void startEngine();
+    abstract void stopEngine();
+    abstract void speedUp();
+    abstract void speedDown();
+    abstract void turnLeft();
+    abstract void turnRight();
+    abstract void seedCloud(Cloud cloud);
+
 }
 
 class HelicopterOffState extends HelicopterState {
@@ -578,24 +679,145 @@ class HelicopterOffState extends HelicopterState {
         super(helicopter);
     }
 
-}
-
-class HelicopterReadyState extends HelicopterState {
-    public HelicopterReadyState(Helicopter helicopter) {
-        super(helicopter);
+    @Override
+    void startEngine() {
+        helicopter.setState(helicopter.getStartingState());
+        helicopter.getState().startEngine();
     }
+
+    @Override
+    void stopEngine() { /* Do nothing - engine already off */}
+
+    @Override
+    void speedUp() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void speedDown() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void turnLeft() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void turnRight() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void seedCloud(Cloud cloud) { /* Do nothing - helicopter is off */}
+
 }
 
 class HelicopterStartingState extends HelicopterState {
     public HelicopterStartingState(Helicopter helicopter) {
         super(helicopter);
     }
+
+    @Override
+    void startEngine() {
+        helicopter.getBlade().setOnMaxRotationalSpeed(() ->
+                helicopter.setState(helicopter.getReadyState())
+        );
+        helicopter.getBlade().startSpinning();
+    }
+
+    @Override
+    void stopEngine() {
+        helicopter.setState(helicopter.getStoppingState());
+        helicopter.getState().stopEngine();
+    }
+
+    @Override
+    void speedUp() { /* Do nothing - helicopter is starting */ }
+
+    @Override
+    void speedDown() { /* Do nothing - helicopter is starting */}
+
+    @Override
+    void turnLeft() { /* Do nothing - helicopter is starting */}
+
+    @Override
+    void turnRight() { /* Do nothing - helicopter is starting */ }
+
+    @Override
+    void seedCloud(Cloud cloud) { /* Do nothing - helicopter is starting */}
 }
+
+class HelicopterReadyState extends HelicopterState {
+    public HelicopterReadyState(Helicopter helicopter) {
+        super(helicopter);
+    }
+
+    @Override
+    void startEngine() {
+        //do nothing - engine is already running
+    }
+
+    @Override
+    void stopEngine() {
+        if(Math.abs(helicopter.getSpeed()) >= 0.1) return;
+
+        helicopter.setState(helicopter.getStoppingState());
+        helicopter.getState().stopEngine();
+    }
+
+    @Override
+    void speedUp() {
+        if(helicopter.getSpeed() >= 10) return;
+        helicopter.setSpeed(helicopter.getSpeed() + 0.1);
+    }
+
+    @Override
+    void speedDown() {
+        if(helicopter.getSpeed() <= -2) return;
+        helicopter.setSpeed(helicopter.getSpeed() - 0.1);
+    }
+
+    @Override
+    void turnLeft() {
+        helicopter.setHeading(helicopter.getHeading() - 15);
+    }
+
+    @Override
+    void turnRight() {
+        helicopter.setHeading(helicopter.getHeading() + 15);
+    }
+
+    @Override
+    void seedCloud(Cloud cloud) {
+
+    }
+}
+
 
 class HelicopterStoppingState extends HelicopterState {
     public HelicopterStoppingState(Helicopter helicopter) {
         super(helicopter);
     }
+
+    @Override
+    void startEngine() {
+        helicopter.setState(helicopter.getStartingState());
+    }
+
+    @Override
+    void stopEngine() {
+        helicopter.getBlade().stopSpinning();
+        helicopter.setState(helicopter.getOffState());
+    }
+
+    @Override
+    void speedUp() { /* Do nothing - helicopter is stopping */ }
+
+    @Override
+    void speedDown() { /* Do nothing - helicopter is stopping */ }
+
+    @Override
+    void turnLeft() { /* Do nothing - helicopter is stopping */ }
+
+
+    @Override
+    void turnRight() { /* Do nothing - helicopter is stopping */ }
+
+    @Override
+    void seedCloud(Cloud cloud) { /* Do nothing - helicopter is stopping */ }
 }
 
 
