@@ -407,6 +407,8 @@ class Helicopter extends GameObject implements Updatable {
     private int fuel;
     private Runnable onCrashAction;
     private GameText fuelLabel;
+
+    private GameText stateLabel;
     private HeloBody heloBody;
     private HeloBlade heloBlade;
     public Helicopter(int initialWater, Vector initialPosition, int initialFuel)
@@ -418,9 +420,12 @@ class Helicopter extends GameObject implements Updatable {
         heloBlade = new HeloBlade();
 
         fuelLabel = new GameText();
-        fuelLabel.setFill(Color.YELLOW);
+        stateLabel = new GameText();
 
-        getChildren().addAll(heloBody, heloBlade, fuelLabel);
+        fuelLabel.setFill(Color.BLUE);
+        stateLabel.setFill(Color.BLUE);
+
+        getChildren().addAll(heloBody, heloBlade, fuelLabel, stateLabel);
 
         position = initialPosition;
 
@@ -491,7 +496,7 @@ class Helicopter extends GameObject implements Updatable {
     public void update(double frameTime) {
         calculateNewPosition(frameTime);
         move();
-        updateFuelLabel();
+        updateLabels();
         updateBoundingRect();
 
         fuel -= Math.abs((speed)*frameTime*30);
@@ -505,9 +510,23 @@ class Helicopter extends GameObject implements Updatable {
 
     }
 
-    private void updateFuelLabel() {
+    private void updateLabels() {
+         double halfGroupWidth = getLayoutBounds().getWidth()/2;
+
+         double halfFuelLabelWidth = fuelLabel.getLayoutBounds()
+                .getWidth()/2;
+
+         double halfStateLabelWidth = stateLabel.getLayoutBounds()
+                .getWidth()/2;
+
+         double fuelLabelHeight = fuelLabel.getLayoutBounds().getHeight();
+
         fuelLabel.setText("F: " + fuel);
-        fuelLabel.setTranslateX(getLayoutBounds().getWidth()/2 - fuelLabel.getLayoutBounds().getWidth()/2);
+        fuelLabel.setTranslateX(halfGroupWidth - halfFuelLabelWidth);
+
+        stateLabel.setText(currState.toString());
+        stateLabel.setTranslateX(halfGroupWidth - halfStateLabelWidth);
+        stateLabel.setTranslateY(-fuelLabelHeight);
     }
 
     public void seedCloud(Cloud cloud) {
@@ -576,15 +595,16 @@ class ImageBackground extends Pane {
     }
 
 }
-
+enum BladeState {
+    STOPPED, INCREASING_SPEED, DECREASING_SPEED, AT_MAX_SPEED
+}
 class HeloBlade extends ImageView {
-    private static final double MAX_ROTATIONAL_SPEED = 1000;
+    private BladeState currState;
+    public static final double MAX_ROTATIONAL_SPEED = 1000;
     private double rotationalSpeed;
-    private boolean isEngineRunning = false;
-    private boolean maxSpeedAchieved = false;
     private Runnable onMaxRotationalSpeed;
+    private Runnable onStopRotating;
 
-    boolean isRunningFirstTime = true;
     public HeloBlade() {
         super(new Image("/Assets/blades.png"));
         setScaleY(-1);
@@ -594,13 +614,15 @@ class HeloBlade extends ImageView {
 
         setFitHeight(80);
         setFitWidth(80);
+
+        currState = BladeState.STOPPED;
         AnimationTimer loop = new AnimationTimer() {
             double old = 0;
             double elapsed = 0;
 
             @Override
             public void handle(long now) {
-                if(old == 0) {
+                if (old == 0) {
                     old = now;
                     return;
                 }
@@ -608,34 +630,29 @@ class HeloBlade extends ImageView {
                 old = now;
                 elapsed += frameTime;
 
-                setRotate(getRotate() - rotationalSpeed*frameTime);
+                setRotate(getRotate() - rotationalSpeed * frameTime);
 
-                if(elapsed > 0.5) {
-                    elapsed = 0;
+                if (elapsed < 0.5) return;
+                elapsed = 0;
 
-                    int speedMultiplier = isEngineRunning ? 1 : -1;
-                    rotationalSpeed += 100*speedMultiplier;
-
+                if(currState == BladeState.INCREASING_SPEED) {
+                    rotationalSpeed += 100;
                     if(rotationalSpeed >= MAX_ROTATIONAL_SPEED) {
                         rotationalSpeed = MAX_ROTATIONAL_SPEED;
-                        maxSpeedAchieved = true;
-                    } else {
-                        maxSpeedAchieved = false;
-                    }
 
-                    if (rotationalSpeed < 0) {
+                        if(onMaxRotationalSpeed != null)
+                            onMaxRotationalSpeed.run();
+
+                        currState = BladeState.AT_MAX_SPEED;
+                    }
+                } else if(currState == BladeState.DECREASING_SPEED) {
+                    rotationalSpeed -= 100;
+                    if(rotationalSpeed <= 0) {
                         rotationalSpeed = 0;
-                        maxSpeedAchieved = false;
-                        isRunningFirstTime = true;
+                        if(onStopRotating != null) onStopRotating.run();
+                        currState = BladeState.STOPPED;
                     }
                 }
-
-                if(maxSpeedAchieved && isRunningFirstTime &&
-                        onMaxRotationalSpeed != null) {
-                    onMaxRotationalSpeed.run();
-                    isRunningFirstTime = false;
-                }
-
             }
         };
 
@@ -643,9 +660,15 @@ class HeloBlade extends ImageView {
     }
 
     public void startSpinning() {
-        if(rotationalSpeed > 0) return;
-        isEngineRunning = true;
+        if(currState == BladeState.AT_MAX_SPEED) return;
+        currState = BladeState.INCREASING_SPEED;
+    }
 
+    /**
+     * Only runs when the blade comes to a stop from spinning
+     */
+    public void setOnStoppedRotating(Runnable action) {
+        this.onStopRotating = action;
     }
 
     public void setOnMaxRotationalSpeed(Runnable action) {
@@ -653,7 +676,8 @@ class HeloBlade extends ImageView {
     }
 
     public void stopSpinning() {
-        isEngineRunning = false;
+        if(currState == BladeState.STOPPED) return;
+        currState = BladeState.DECREASING_SPEED;
     }
 }
 
@@ -671,7 +695,6 @@ abstract class HelicopterState {
     abstract void turnLeft();
     abstract void turnRight();
     abstract void seedCloud(Cloud cloud);
-
 }
 
 class HelicopterOffState extends HelicopterState {
@@ -702,6 +725,10 @@ class HelicopterOffState extends HelicopterState {
 
     @Override
     void seedCloud(Cloud cloud) { /* Do nothing - helicopter is off */}
+
+    public String toString() {
+        return "Off";
+    }
 
 }
 
@@ -738,6 +765,10 @@ class HelicopterStartingState extends HelicopterState {
 
     @Override
     void seedCloud(Cloud cloud) { /* Do nothing - helicopter is starting */}
+
+    public String toString() {
+        return "Starting";
+    }
 }
 
 class HelicopterReadyState extends HelicopterState {
@@ -784,6 +815,10 @@ class HelicopterReadyState extends HelicopterState {
     void seedCloud(Cloud cloud) {
 
     }
+
+    public String toString() {
+        return "Flying";
+    }
 }
 
 
@@ -799,8 +834,10 @@ class HelicopterStoppingState extends HelicopterState {
 
     @Override
     void stopEngine() {
+        helicopter.getBlade().setOnStoppedRotating(() ->
+                helicopter.setState(helicopter.getOffState())
+        );
         helicopter.getBlade().stopSpinning();
-        helicopter.setState(helicopter.getOffState());
     }
 
     @Override
@@ -818,6 +855,10 @@ class HelicopterStoppingState extends HelicopterState {
 
     @Override
     void seedCloud(Cloud cloud) { /* Do nothing - helicopter is stopping */ }
+
+    public String toString() {
+        return "Stopping";
+    }
 }
 
 
