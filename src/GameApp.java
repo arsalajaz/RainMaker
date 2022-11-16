@@ -14,6 +14,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
+import javafx.scene.paint.ImagePattern;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
@@ -234,11 +235,11 @@ abstract class GameObject extends Group {
         this.getTransforms().addAll(myTranslation, myRotation, myScale);
     }
 
-    public void rotate(double degrees) {
+    public void rotate(double degrees, double pivotX, double pivotY) {
 
         myRotation.setAngle(degrees);
-        myRotation.setPivotX(getLayoutBounds().getWidth() / 2);
-        myRotation.setPivotY(getLayoutBounds().getWidth() / 2);
+        myRotation.setPivotX(pivotX);
+        myRotation.setPivotY(pivotY);
     }
 
     public void scale(double sx, double sy) {
@@ -246,12 +247,11 @@ abstract class GameObject extends Group {
         myScale.setY(sy);
     }
 
-    public void translate(double tx, double ty) {
+    public void translate(double tx, double ty, double centerX, double centerY) {
         // Translate relative to the center of the object
 
-
-        myTranslation.setX(tx);
-        myTranslation.setY(ty);
+        myTranslation.setX(tx-centerX);
+        myTranslation.setY(ty-centerY);
     }
 
     void toggleBoundingBox() {
@@ -399,7 +399,7 @@ class Helipad extends GameObject {
 
         getChildren().addAll(pad, border);
 
-        translate(intialPosition.getX(), intialPosition.getY());
+        translate(intialPosition.getX(), intialPosition.getY(), 0, 0);
         updateBoundingRect();
 
     }
@@ -449,10 +449,7 @@ class Helicopter extends GameObject implements Updatable {
 
         getChildren().addAll(heloBody, heloBlade, fuelText, stateText);
 
-        position = new Vector(
-                initialPosition.getX()-getLayoutBounds().getWidth()/2,
-                initialPosition.getY()-getLayoutBounds().getHeight()/3
-        );
+        position = initialPosition;
 
         offState = new HelicopterOffState(this);
         startingState = new HelicopterStartingState(this);
@@ -468,16 +465,6 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     public void startEngine(Helipad helipad) {
-//        if(Math.abs(speed) < 0.1 && ignition) {
-//            speed = 0;
-//            ignition = false;
-//            landed = true;
-//            heloBlade.stopSpinning();
-//        } else {
-//            ignition = true;
-//            landed = false;
-//            heloBlade.startSpinning();
-//        }
         currState.startEngine();
     }
 
@@ -510,8 +497,17 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     private void move() {
-        rotate(getCartesianAngle() - 90);
-        translate(position.getX(), position.getY());
+        rotate(
+                getCartesianAngle() - 90,
+                heloBlade.getTranslateX(),
+                heloBlade.getTranslateY()
+        );
+        translate(
+                position.getX(),
+                position.getY(),
+                heloBlade.getTranslateX(),
+                heloBlade.getTranslateY()
+        );
     }
 
     private void calculateNewPosition(double frameTime) {
@@ -533,21 +529,11 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     private void updateLabels() {
-        double halfGroupWidth = getLayoutBounds().getWidth() / 2;
-
-        double halfFuelLabelWidth = fuelText.getLayoutBounds()
-                .getWidth() / 2;
-
-        double halfStateLabelWidth = stateText.getLayoutBounds()
-                .getWidth() / 2;
-
         double fuelLabelHeight = fuelText.getLayoutBounds().getHeight();
 
         fuelText.setText("F: " + fuel);
-        fuelText.setTranslateX(halfGroupWidth - halfFuelLabelWidth);
 
         stateText.setText(currState.toString());
-        stateText.setTranslateX(halfGroupWidth - halfStateLabelWidth);
         stateText.setTranslateY(-fuelLabelHeight);
     }
 
@@ -571,7 +557,7 @@ class Helicopter extends GameObject implements Updatable {
 
     @Override
     Shape getShape() {
-        return null;
+        return heloBody;
     }
 
     public void accelerate() {
@@ -865,24 +851,17 @@ class HelicopterStoppingState extends HelicopterState {
 }
 
 
-class HeloBody extends GameObject {
+class HeloBody extends Rectangle {
     public HeloBody() {
-        ImageView imageView = new ImageView(new Image("/Assets/HeloBody.png"));
-        imageView.setScaleY(-1);
-        imageView.setFitWidth(120);
-        imageView.setFitHeight(120);
+        super(30, 102.88);
 
-        getChildren().add(imageView);
-    }
-
-    @Override
-    Shape getShape() {
-        return null;
+        setFill(new ImagePattern(new Image("/Assets/HelicopterBody.png")));
+        setScaleY(-1);
     }
 }
 
 
-class HeloBlade extends GameObject {
+class HeloBlade extends Circle {
     public static final double MAX_ROTATIONAL_SPEED = 1000;
     private BladeState currState;
     private double rotationalSpeed;
@@ -890,17 +869,17 @@ class HeloBlade extends GameObject {
     private Runnable onStopRotating;
 
     public HeloBlade() {
-        ImageView blade = new ImageView(new Image("/Assets/blades.png"));
-        blade.setScaleY(-1);
-        blade.setRotate(45);
-        blade.setTranslateX(20);
-        blade.setTranslateY(20);
+        super(40);
 
-        blade.setFitHeight(80);
-        blade.setFitWidth(80);
+        setFill(new ImagePattern(new Image("/Assets/blades.png")));
 
-        getChildren().add(blade);
         currState = BladeState.STOPPED;
+
+        setScaleY(-1);
+        setRotate(45);
+        setTranslateX(15);
+        setTranslateY(65);
+
         AnimationTimer loop = new AnimationTimer() {
             double old = 0;
             double elapsed = 0;
@@ -915,7 +894,7 @@ class HeloBlade extends GameObject {
                 old = now;
                 elapsed += frameTime;
 
-                blade.setRotate(blade.getRotate() - rotationalSpeed * frameTime);
+                setRotate(getRotate() - rotationalSpeed * frameTime);
 
                 if (elapsed < 0.5) return;
                 elapsed = 0;
@@ -942,11 +921,6 @@ class HeloBlade extends GameObject {
         };
 
         loop.start();
-    }
-
-    @Override
-    Shape getShape() {
-        return null;
     }
 
     public void startSpinning() {
