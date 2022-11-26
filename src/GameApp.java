@@ -1,5 +1,6 @@
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
+import javafx.geometry.BoundingBox;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
@@ -63,25 +64,27 @@ public class GameApp extends Application {
 }
 
 class Game extends Pane {
-    private static final Vector COPTER_INITIAL_POS =
-            new Vector(GameApp.GAME_WIDTH / 2, 100);
-    private static final Point2D PAD_INITIAL_POSITION =
-            new Point2D(GameApp.GAME_WIDTH / 2, 100);
-    private static final double COPTER_RADIUS = 15;
+    private final Bounds gameBounds =
+            new BoundingBox(0, 0, GameApp.GAME_WIDTH, GameApp.GAME_HEIGHT);
+    private final Vector COPTER_INITIAL_POS =
+            new Vector(gameBounds.getWidth() / 2, 100);
+    private final Point2D PAD_INITIAL_POSITION =
+            new Point2D(gameBounds.getHeight() / 2, 100);
     private static final double PAD_RADIUS = GameApp.GAME_WIDTH / 10;
     private final Alert gameOverAlert;
     private final Runnable stageClose;
     private final AnimationTimer animationTimer;
     HashSet<KeyCode> keysDown = new HashSet<>();
+
+
     private Helicopter helicopter;
     private Helipad helipad;
     private Clouds clouds;
-    private Pond pond;
+    private Ponds ponds;
 
     public Game(Runnable stageClose) {
         setScaleY(-1);
         setBackground(Background.fill(Color.BLACK));
-
         this.stageClose = stageClose;
 
         gameOverAlert = new Alert(Alert.AlertType.CONFIRMATION);
@@ -122,7 +125,7 @@ class Game extends Pane {
     private void update(double FrameTime) {
         helicopter.update(FrameTime);
         clouds.update(FrameTime);
-        pond.update(FrameTime);
+        ponds.update(FrameTime);
     }
 
     void onCopterCrash() {
@@ -151,17 +154,16 @@ class Game extends Pane {
 
         clouds = new Clouds();
 
-        double randPondArea = rand(1500, 2500);
-        double pondRadius = Pond.getRadius(randPondArea);
-        pond = new Pond(randPoint(pondRadius, pondRadius), randPondArea);
+        // A pond won't spawn on the helipad, can be used to add more obstacles
+        ArrayList<Bounds> pondObstacles = new ArrayList<>();
+        pondObstacles.add(helipad.getBoundsInParent());
+        ponds = new Ponds(gameBounds, pondObstacles);
 
         getChildren().add(new ImageBackground(GameApp.GAME_WIDTH,
                 GameApp.GAME_HEIGHT));
-        getChildren().addAll(helipad, pond, clouds, helicopter);
+        getChildren().addAll(helipad, ponds, clouds, helicopter);
         getChildren().addAll(
-                pond.getBoundingRect(),
                 helipad.getBoundingRect(),
-
                 helicopter.getBoundingRect()
         );
     }
@@ -190,7 +192,10 @@ class Game extends Pane {
         if (event.getCode() == KeyCode.B) {
             for (Node node : getChildren()) {
                 if (node instanceof GameObject)
-                    ((GameObject) node).toggleBoundingBox();
+                    ((GameObject) node).toggleBoundingRect();
+                if (node instanceof GameObjectPane<?>) {
+                    ((GameObjectPane<?>) node).toggleBoundingRects();
+                }
             }
         }
         if (event.getCode() == KeyCode.R) init();
@@ -242,7 +247,7 @@ abstract class GameObject extends Group {
         myTranslation.setY(ty);
     }
 
-    void toggleBoundingBox() {
+    void toggleBoundingRect() {
         boundingRect.setVisible(!boundingRect.isVisible());
     }
 
@@ -635,7 +640,7 @@ class Helicopter extends GameObject implements Updatable {
 
 /**
  * Game object pane that stores collection of one type of game objects and
- * updtable
+ * updatable
  */
 
 class GameObjectPane<T extends GameObject> extends Pane implements Iterable {
@@ -643,12 +648,18 @@ class GameObjectPane<T extends GameObject> extends Pane implements Iterable {
 
     public void add(T object) {
         objects.add(object);
-        getChildren().add(object);
+        getChildren().addAll(object, object.getBoundingRect());
     }
 
     public void remove(T object) {
         objects.remove(object);
-        getChildren().remove(object);
+        getChildren().removeAll(object, object.getBoundingRect());
+    }
+
+    public void toggleBoundingRects() {
+        for (T object : objects) {
+            object.toggleBoundingRect();
+        }
     }
 
     public void clear() {
@@ -669,8 +680,6 @@ class GameObjectPane<T extends GameObject> extends Pane implements Iterable {
 class Clouds extends GameObjectPane<Cloud> implements Updatable {
     private static final int MAX_CLOUDS = 5;
     private static final int MIN_CLOUDS = 2;
-
-
     private static final double CLOUD_RADIUS = 50;
 
     private final Random random = new Random();
@@ -689,6 +698,7 @@ class Clouds extends GameObjectPane<Cloud> implements Updatable {
 
     @Override
     public void update(double frameTime) {
+        // not using iterator to avoid concurrent modification exception
         for (int i = 0; i < getObjects().size(); i++) {
             if (getObjects().get(i).getState() == CloudState.DEAD) {
                 remove(getObjects().get(i));
@@ -701,16 +711,90 @@ class Clouds extends GameObjectPane<Cloud> implements Updatable {
                 }
             }
             else getObjects().get(i).update(frameTime);
-
         }
 
 
     }
 }
 
+class Ponds extends GameObjectPane<Pond> implements Updatable {
+    private static final int TOTAL_PONDS = 3;
+    private final Bounds windowBounds;
+    private final ArrayList<Bounds> obstacles;
+    public Ponds(Bounds bounds, ArrayList<Bounds> obstacles) {
+        this.windowBounds = bounds;
+        this.obstacles = obstacles;
+        while (getObjects().size() < TOTAL_PONDS) {
+            double randArea = getRandomArea();
+            Point2D randSpawn = randomSpawnPoint(convertAreaToRadius(randArea));
+            Pond pond = new Pond(randSpawn, randArea);
+            if (overlapsAnotherPond(pond) || overlapsObstacle(pond)
+             || closeToAnotherPond(pond)) continue;
+            add(pond);
+        }
+    }
+
+    private double getRandomArea() {
+        return Game.rand(2000, 5000);
+    }
+
+    private boolean closeToAnotherPond(Pond pond) {
+        for (Pond p : getObjects()) {
+            if (distanceBetween(p, pond) < 200) return true;
+        }
+        return false;
+    }
+
+    private double distanceBetween(Pond pond1, Pond pond2) {
+        double x1 =  pond1.getBoundsInParent().getCenterX();
+        double y1 =  pond1.getBoundsInParent().getCenterY();
+
+        double x2 =  pond2.getBoundsInParent().getCenterX();
+        double y2 =  pond2.getBoundsInParent().getCenterY();
+
+        return Math.sqrt(Math.pow(x1-x2, 2) + Math.pow(y1-y2, 2));
+    }
+
+    private boolean overlapsObstacle(Pond pond) {
+        for (Bounds obstacle : obstacles) {
+            if (pond.getBoundsInParent().intersects(obstacle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean overlapsAnotherPond(Pond pond) {
+        for (Pond p : getObjects()) {
+            if (p.interest(pond)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static double convertAreaToRadius(double area) {
+        return Math.sqrt(area / Math.PI);
+    }
+
+    private Point2D randomSpawnPoint(double radius) {
+        return new Point2D(
+                Game.rand(radius, windowBounds.getWidth() - radius),
+                Game.rand(radius, windowBounds.getHeight() - radius)
+        );
+    }
+
+    @Override
+    public void update(double FrameTime) {
+        // not using iterator to avoid concurrent modification exception
+        for (int i = 0; i < getObjects().size(); i++) {
+            getObjects().get(i).update(FrameTime);
+        }
+    }
+}
+
 class ImageBackground extends Pane {
     private final ImageView background;
-
     public ImageBackground(double width, double height) {
         background = new ImageView(new Image("/Assets/Desert.jpg"));
         background.setFitWidth(width);
@@ -720,7 +804,6 @@ class ImageBackground extends Pane {
 
 }
 
-//implement state pattern for helicopter
 abstract class HelicopterState {
     protected Helicopter helicopter;
 
@@ -956,7 +1039,10 @@ class HeloBody extends Rectangle {
     }
 }
 
-
+/*
+* Extends the Circle class so that the bounding box does not increase on
+* rotation. Uses a simple enum state.
+* */
 class HeloBlade extends Circle {
     public static final double MAX_ROTATIONAL_SPEED = 1000;
     public static final double INITIAL_ROTATION = 45;
@@ -974,8 +1060,6 @@ class HeloBlade extends Circle {
 
         setScaleY(-1);
         setRotate(INITIAL_ROTATION);
-
-
         AnimationTimer loop = new AnimationTimer() {
             double old = 0;
             double elapsed = 0;
@@ -1032,6 +1116,9 @@ class HeloBlade extends Circle {
         this.onStopRotating = action;
     }
 
+    /**
+     * Only runs when the blade reaches its maximum rotational speed
+     */
     public void setOnMaxRotationalSpeed(Runnable action) {
         this.onMaxRotationalSpeed = action;
     }
