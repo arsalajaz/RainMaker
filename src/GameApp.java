@@ -1,5 +1,7 @@
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
+import javafx.event.Event;
+import javafx.event.EventHandler;
 import javafx.geometry.BoundingBox;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
@@ -12,11 +14,11 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.Background;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.ImagePattern;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
 import javafx.scene.text.Text;
@@ -42,7 +44,6 @@ interface Updatable {
 public class GameApp extends Application {
     public static final int GAME_WIDTH = 800;
     public static final int GAME_HEIGHT = 800;
-
     public static void main(String[] args) {
         launch(args);
     }
@@ -63,7 +64,7 @@ public class GameApp extends Application {
     }
 }
 
-class Game extends Pane {
+class Game extends Pane implements CloudsListener {
     private final Bounds gameBounds =
             new BoundingBox(0, 0, GameApp.GAME_WIDTH, GameApp.GAME_HEIGHT);
     private final Vector COPTER_INITIAL_POS =
@@ -76,7 +77,6 @@ class Game extends Pane {
     private final AnimationTimer animationTimer;
     HashSet<KeyCode> keysDown = new HashSet<>();
 
-
     private Helicopter helicopter;
     private Helipad helipad;
     private Clouds clouds;
@@ -84,7 +84,6 @@ class Game extends Pane {
 
     public Game(Runnable stageClose) {
         setScaleY(-1);
-        setBackground(Background.fill(Color.BLACK));
         this.stageClose = stageClose;
 
         gameOverAlert = new Alert(Alert.AlertType.CONFIRMATION);
@@ -111,7 +110,6 @@ class Game extends Pane {
                 rainRate += FrameTime;
 
                 update(FrameTime);
-
             }
         };
 
@@ -135,8 +133,8 @@ class Game extends Pane {
                 ButtonType.YES, ButtonType.NO);
         alert.setOnHidden(e -> {
             if (alert.getResult() == ButtonType.YES) {
-                animationTimer.start();
                 init();
+                animationTimer.start();
             } else {
                 stageClose.run();
             }
@@ -147,33 +145,33 @@ class Game extends Pane {
     private void init() {
         getChildren().clear();
 
-        helicopter = new Helicopter(5000, COPTER_INITIAL_POS, 25000);
-        helicopter.setOnCrash(this::onCopterCrash);
+
 
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
 
+        helicopter = new Helicopter(5000, COPTER_INITIAL_POS, 25000);
+        helicopter.setOnCrash(this::onCopterCrash);
+        helicopter.setLandingLocation(helipad);
+
         clouds = new Clouds();
+        clouds.addListener(this);
 
         // A pond won't spawn on the helipad, can be used to add more obstacles
         ArrayList<Bounds> pondObstacles = new ArrayList<>();
         pondObstacles.add(helipad.getBoundsInParent());
         ponds = new Ponds(gameBounds, pondObstacles);
 
-        getChildren().add(new ImageBackground(GameApp.GAME_WIDTH,
-                GameApp.GAME_HEIGHT));
+        ImageBackground background = new ImageBackground(GameApp.GAME_WIDTH,
+                GameApp.GAME_HEIGHT);
+
+        System.out.println(background.getLayoutBounds());
+
+        getChildren().add(background);
         getChildren().addAll(helipad, ponds, clouds, helicopter);
         getChildren().addAll(
                 helipad.getBoundingRect(),
                 helicopter.getBoundingRect()
         );
-    }
-
-    // Returns a random point within the top 2/3 of the window
-    private Point2D randPoint(double width, double height) {
-        double x, y;
-        x = rand(width, GameApp.GAME_WIDTH - width);
-        y = rand(2 * GameApp.GAME_HEIGHT / 3, GameApp.GAME_HEIGHT) - height;
-        return new Point2D(x, y);
     }
 
     public void handleKeyPressed(KeyEvent event) {
@@ -185,9 +183,9 @@ class Game extends Pane {
         if (isKeyDown(KeyCode.LEFT)) helicopter.turnLeft();
         if (event.getCode() == KeyCode.I) {
             if (helicopter.getState() == helicopter.getOffState())
-                helicopter.startEngine(helipad);
+                helicopter.takeOff();
             else
-                helicopter.stopEngine();
+                helicopter.land();
         }
         if (event.getCode() == KeyCode.B) {
             for (Node node : getChildren()) {
@@ -199,6 +197,9 @@ class Game extends Pane {
             }
         }
         if (event.getCode() == KeyCode.R) init();
+
+        //if c is presssed, run garbage collector
+        if (event.getCode() == KeyCode.C) System.gc();
     }
 
     public void handleKeyReleased(KeyEvent event) {
@@ -209,6 +210,23 @@ class Game extends Pane {
         return keysDown.contains(k);
     }
 
+    @Override
+    public void onCloudDestroyed(Cloud cloud) {
+        System.out.println("Cloud destroyed");
+        getChildren().removeAll(cloud.getDistanceLines());
+    }
+
+    @Override
+    public void onCloudSpawned(Cloud cloud) {
+        for (Pond pond : ponds) {
+            cloud.addDistanceLineTo(pond);
+        }
+        //add distance lines to children if they are not already there
+        if(!getChildren().containsAll(cloud.getDistanceLines())) {
+            getChildren().addAll(cloud.getDistanceLines());
+        }
+        System.out.println("Cloud spawned");
+    }
 }
 
 abstract class GameObject extends Group {
@@ -216,6 +234,8 @@ abstract class GameObject extends Group {
     protected Translate myTranslation;
     protected Rotate myRotation;
     protected Scale myScale;
+
+    protected ArrayList<DistanceLine> distanceLines = new ArrayList<>();
 
     public GameObject() {
         boundingRect.setFill(Color.TRANSPARENT);
@@ -238,6 +258,9 @@ abstract class GameObject extends Group {
     }
 
     public void scale(double sx, double sy) {
+//        // scale around center
+//        myScale.setPivotX(getBoundsInParent().getWidth() / 2);
+//        myScale.setPivotY(getBoundsInParent().getHeight() / 2);
         myScale.setX(sx);
         myScale.setY(sy);
     }
@@ -270,6 +293,15 @@ abstract class GameObject extends Group {
     public boolean interest(GameObject object) {
         return !Shape.intersect(this.getShape(), object.getShape())
                 .getBoundsInLocal().isEmpty();
+    }
+
+    public void addDistanceLineTo(GameObject object) {
+        DistanceLine line = new DistanceLine(this, object);
+        distanceLines.add(line);
+    }
+
+    public ArrayList<DistanceLine> getDistanceLines() {
+        return distanceLines;
     }
 
     abstract Shape getShape();
@@ -328,9 +360,7 @@ class Pond extends GameObject implements Updatable {
 class Cloud extends GameObject implements Updatable {
     private static final double WIND_SPEED = 0.4;
     private static final double WIND_DIRECTION = 45;
-
     private CloudState state = CloudState.SPAWNED;
-
     private Vector position;
     private Vector velocity;
     private final Circle cloud;
@@ -339,7 +369,7 @@ class Cloud extends GameObject implements Updatable {
     private double speedOffset = Game.rand(40,70);
 
     public Cloud(Point2D position, double initialRadius) {
-        cloud = new Circle(initialRadius, Color.rgb(155, 155, 155));
+        cloud = new Circle(initialRadius, Color.rgb(255, 255, 255));
 
         percentText = new GameText();
         percentText.setFill(Color.BLUE);
@@ -395,14 +425,22 @@ class Cloud extends GameObject implements Updatable {
         setTranslateX(position.getX());
         setTranslateY(position.getY());
 
-        cloud.setFill(Color.rgb(155 - saturation, 155 - saturation,
-                155 - saturation));
+        cloud.setFill(Color.rgb(255 - saturation, 255 - saturation,
+                255 - saturation));
         percentText.setText(saturation + "%");
         percentText.setTranslateX(-percentText.getLayoutBounds().getWidth() / 2);
         percentText.setTranslateY(percentText.getLayoutBounds().getHeight() / 2);
 
         updateBoundingRect();
 
+        for (DistanceLine line : getDistanceLines()) {
+            line.update();
+        }
+
+    }
+
+    public boolean isDead() {
+        return state == CloudState.DEAD;
     }
 }
 
@@ -456,6 +494,7 @@ class Helicopter extends GameObject implements Updatable {
     private int water;
     private int fuel;
     private Runnable onCrashAction;
+    private Helipad helipad;
 
     public Helicopter(int initialWater, Vector initialPosition, int initialFuel) {
         water = initialWater;
@@ -467,8 +506,8 @@ class Helicopter extends GameObject implements Updatable {
         fuelText = new GameText();
         stateText = new GameText();
 
-        fuelText.setFill(Color.BLUE);
-        stateText.setFill(Color.BLUE);
+        fuelText.setFill(Color.RED);
+        stateText.setFill(Color.RED);
 
         getChildren().addAll(heloBody, heloBlade, fuelText, stateText);
 
@@ -487,11 +526,11 @@ class Helicopter extends GameObject implements Updatable {
         return (double) Math.round(value * scale) / scale;
     }
 
-    public void startEngine(Helipad helipad) {
+    public void takeOff() {
         currState.startEngine();
     }
 
-    public void stopEngine() {
+    public void land() {
         currState.stopEngine();
     }
 
@@ -546,17 +585,22 @@ class Helicopter extends GameObject implements Updatable {
         updateLabels();
         updateBoundingRect();
 
+        // increase the size if the helicopter is started and not ready
+        if (currState == startingState) {
+            scale(getScaleX() + 0.01, getScaleY() + 0.01);
+        }
+
         currState.consumeFuel(frameTime);
     }
 
     private void updateLabels() {
         fuelText.setText("F: " + fuel);
         fuelText.setTranslateX(-fuelText.getLayoutBounds().getWidth() / 2);
-        fuelText.setTranslateY(-65);
+        fuelText.setTranslateY(-30);
 
         stateText.setText(currState.toString());
         stateText.setTranslateX(-stateText.getLayoutBounds().getWidth() / 2);
-        stateText.setTranslateY(-65 - fuelText.getLayoutBounds().getHeight());
+        stateText.setTranslateY(-30 - fuelText.getLayoutBounds().getHeight());
     }
 
     public void seedCloud(Cloud cloud) {
@@ -636,6 +680,15 @@ class Helicopter extends GameObject implements Updatable {
             onCrashAction.run();
         }
     }
+
+    public void setLandingLocation(Helipad helipad) {
+        this.helipad = helipad;
+    }
+
+    public boolean hooveringOverHelipad() {
+        return helipad != null &&
+                helipad.getBoundsInParent().contains(getBoundsInParent());
+    }
 }
 
 /**
@@ -643,12 +696,16 @@ class Helicopter extends GameObject implements Updatable {
  * updatable
  */
 
-class GameObjectPane<T extends GameObject> extends Pane implements Iterable {
+class GameObjectPane<T extends GameObject> extends Pane implements Iterable<T> {
+    private boolean boundingRectVisible = false;
     private final List<T> objects = new ArrayList<>();
 
     public void add(T object) {
         objects.add(object);
         getChildren().addAll(object, object.getBoundingRect());
+        if(boundingRectVisible) {
+            object.toggleBoundingRect();
+        }
     }
 
     public void remove(T object) {
@@ -660,6 +717,7 @@ class GameObjectPane<T extends GameObject> extends Pane implements Iterable {
         for (T object : objects) {
             object.toggleBoundingRect();
         }
+        boundingRectVisible = !boundingRectVisible;
     }
 
     public void clear() {
@@ -672,48 +730,76 @@ class GameObjectPane<T extends GameObject> extends Pane implements Iterable {
     }
 
     @Override
-    public Iterator iterator() {
+    public Iterator<T> iterator() {
         return objects.iterator();
     }
+}
+
+interface CloudsListener {
+    void onCloudDestroyed(Cloud cloud);
+    void onCloudSpawned(Cloud cloud);
 }
 
 class Clouds extends GameObjectPane<Cloud> implements Updatable {
     private static final int MAX_CLOUDS = 5;
     private static final int MIN_CLOUDS = 2;
     private static final double CLOUD_RADIUS = 50;
+    private List<CloudsListener> listeners = new ArrayList<>();
 
     private final Random random = new Random();
 
     public Clouds() {
-        // Create initial clouds
-        for (int i = 0; i < MAX_CLOUDS; i++) {
-            add(new Cloud(randomSpawnPoint(), CLOUD_RADIUS));
-        }
+    }
+
+    public void addListener(CloudsListener listener) {
+        listeners.add(listener);
     }
 
     private Point2D randomSpawnPoint() {
         return new Point2D(-CLOUD_RADIUS, Game.rand(0, 800));
     }
 
+    private void notifyCloudSpawned(Cloud cloud) {
+        listeners.forEach(l -> l.onCloudSpawned(cloud));
+    }
+    private void notifyCloudDestroyed(Cloud cloud) {
+        listeners.forEach(l -> l.onCloudDestroyed(cloud));
+    }
+
+    private void spawnCloud() {
+        Cloud cloud = new Cloud(randomSpawnPoint(), CLOUD_RADIUS);
+        add(cloud);
+        notifyCloudSpawned(cloud);
+    }
 
     @Override
     public void update(double frameTime) {
-        // not using iterator to avoid concurrent modification exception
-        for (int i = 0; i < getObjects().size(); i++) {
-            if (getObjects().get(i).getState() == CloudState.DEAD) {
-                remove(getObjects().get(i));
-                if (getObjects().size() < MAX_CLOUDS) {
-                    if (getObjects().size() <= MIN_CLOUDS) {
-                        add(new Cloud(randomSpawnPoint(), CLOUD_RADIUS));
-                    } else if (Math.random() < 0.5) {
-                        add(new Cloud(randomSpawnPoint(), CLOUD_RADIUS));
-                    }
-                }
+        // add initial clouds
+        if (getObjects().isEmpty()) {
+            for (int i = 0; i < MAX_CLOUDS; i++) {
+                spawnCloud();
             }
-            else getObjects().get(i).update(frameTime);
+            return;
         }
 
+        // Not using iterator to avoid concurrent modification exception
+        for (int i = 0; i < getObjects().size(); i++) {
+            Cloud cloud = getObjects().get(i);
+            cloud.update(frameTime);
 
+            if (!cloud.isDead()) continue;
+
+            remove(cloud);
+            notifyCloudDestroyed(cloud);
+
+            if (getObjects().size() <= MIN_CLOUDS) {
+                spawnCloud();
+            }
+
+            if (Math.random() < 0.5) {
+                spawnCloud();
+            }
+        }
     }
 }
 
@@ -932,6 +1018,7 @@ class HelicopterReadyState extends HelicopterState {
     @Override
     void stopEngine() {
         if (Math.abs(helicopter.getSpeed()) >= 0.1) return;
+        if (!helicopter.hooveringOverHelipad()) return;
 
         helicopter.setState(helicopter.getStoppingState());
         helicopter.getState().stopEngine();
@@ -1039,10 +1126,10 @@ class HeloBody extends Rectangle {
     }
 }
 
-/*
+/**
 * Extends the Circle class so that the bounding box does not increase on
 * rotation. Uses a simple enum state.
-* */
+*/
 class HeloBlade extends Circle {
     public static final double MAX_ROTATIONAL_SPEED = 1000;
     public static final double INITIAL_ROTATION = 45;
@@ -1132,6 +1219,30 @@ class HeloBlade extends Circle {
 class GameText extends Text {
     public GameText() {
         setScaleY(-1);
+    }
+}
+
+class DistanceLine extends Line {
+    public GameObject object1;
+    public GameObject object2;
+    public DistanceLine(GameObject obj1, GameObject obj2) {
+        setStroke(Color.YELLOW);
+        setStrokeWidth(2);
+
+        object1 = obj1;
+        object2 = obj2;
+
+        setStartX(object1.getBoundsInParent().getCenterX());
+        setStartY(object1.getBoundsInParent().getCenterY());
+        setEndX(object2.getBoundsInParent().getCenterX());
+        setEndY(object2.getBoundsInParent().getCenterY());
+    }
+
+    public void update() {
+        setStartX(object1.getBoundsInParent().getCenterX());
+        setStartY(object1.getBoundsInParent().getCenterY());
+        setEndX(object2.getBoundsInParent().getCenterX());
+        setEndY(object2.getBoundsInParent().getCenterY());
     }
 }
 
