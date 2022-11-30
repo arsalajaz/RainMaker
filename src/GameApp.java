@@ -1,7 +1,7 @@
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
-import javafx.event.Event;
-import javafx.event.EventHandler;
+import javafx.collections.ListChangeListener;
+import javafx.collections.ObservableList;
 import javafx.geometry.BoundingBox;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
@@ -71,33 +71,27 @@ class Game extends Pane implements CloudsListener {
             new Vector(gameBounds.getWidth() / 2, 100);
     private final Point2D PAD_INITIAL_POSITION =
             new Point2D(gameBounds.getHeight() / 2, 100);
-    private static final double PAD_RADIUS = GameApp.GAME_WIDTH / 10;
-    private final Alert gameOverAlert;
+    private static final double PAD_RADIUS = GameApp.GAME_WIDTH / 14;
     private final Runnable stageClose;
     private final AnimationTimer animationTimer;
     HashSet<KeyCode> keysDown = new HashSet<>();
-
     private Helicopter helicopter;
     private Helipad helipad;
     private Clouds clouds;
     private Ponds ponds;
+    private BoundingBoxPane boundingBoxes;
+    private DistanceLinesPane distanceLines;
 
     public Game(Runnable stageClose) {
         setScaleY(-1);
         this.stageClose = stageClose;
-
-        gameOverAlert = new Alert(Alert.AlertType.CONFIRMATION);
-        gameOverAlert.setTitle("Confirmation");
-        gameOverAlert.setHeaderText("Game Over!");
-        gameOverAlert.setContentText("Would you like to play again?");
-
+        clouds = new Clouds();
+        clouds.addListener(this);
         init();
-
         animationTimer = new AnimationTimer() {
             double old = -1;
             double cloudSeedingTime = 0;
             double rainRate = 0;
-
             @Override
             public void handle(long now) {
                 if (old < 0) {
@@ -116,13 +110,9 @@ class Game extends Pane implements CloudsListener {
         animationTimer.start();
     }
 
-    public static double rand(double min, double max) {
-        return Math.random() * (max - min) + min;
-    }
 
     private void update(double FrameTime) {
         helicopter.update(FrameTime);
-        clouds.update(FrameTime);
         ponds.update(FrameTime);
     }
 
@@ -145,16 +135,11 @@ class Game extends Pane implements CloudsListener {
     private void init() {
         getChildren().clear();
 
-
-
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
 
         helicopter = new Helicopter(5000, COPTER_INITIAL_POS, 25000);
         helicopter.setOnCrash(this::onCopterCrash);
         helicopter.setLandingLocation(helipad);
-
-        clouds = new Clouds();
-        clouds.addListener(this);
 
         // A pond won't spawn on the helipad, can be used to add more obstacles
         ArrayList<Bounds> pondObstacles = new ArrayList<>();
@@ -164,14 +149,20 @@ class Game extends Pane implements CloudsListener {
         ImageBackground background = new ImageBackground(GameApp.GAME_WIDTH,
                 GameApp.GAME_HEIGHT);
 
-        System.out.println(background.getLayoutBounds());
+        boundingBoxes = new BoundingBoxPane();
+        distanceLines = new DistanceLinesPane();
 
-        getChildren().add(background);
-        getChildren().addAll(helipad, ponds, clouds, helicopter);
-        getChildren().addAll(
-                helipad.getBoundingRect(),
-                helicopter.getBoundingRect()
-        );
+        boundingBoxes.addAll(helicopter, helipad);
+        for (Pond pond : ponds) { boundingBoxes.add(pond); }
+        for (Cloud cloud : clouds) {
+            boundingBoxes.add(cloud);
+            for(Pond pond : ponds) {
+                distanceLines.add(cloud, pond);
+            }
+        }
+
+        getChildren().addAll(background, helipad, ponds, clouds, helicopter);
+        getChildren().addAll(boundingBoxes, distanceLines);
     }
 
     public void handleKeyPressed(KeyEvent event) {
@@ -187,19 +178,17 @@ class Game extends Pane implements CloudsListener {
             else
                 helicopter.land();
         }
-        if (event.getCode() == KeyCode.B) {
-            for (Node node : getChildren()) {
-                if (node instanceof GameObject)
-                    ((GameObject) node).toggleBoundingRect();
-                if (node instanceof GameObjectPane<?>) {
-                    ((GameObjectPane<?>) node).toggleBoundingRects();
+        if (event.getCode() == KeyCode.B) boundingBoxes.toggleVisibility();
+        if (event.getCode() == KeyCode.D) distanceLines.toggleVisibility();
+        if (event.getCode() == KeyCode.R) init();
+        if (event.getCode() == KeyCode.C) System.gc();
+        if (event.getCode() == KeyCode.SPACE) {
+            for (Cloud cloud : clouds) {
+                if (helicopter.interest(cloud)) {
+                    helicopter.seedCloud(cloud);
                 }
             }
         }
-        if (event.getCode() == KeyCode.R) init();
-
-        //if c is presssed, run garbage collector
-        if (event.getCode() == KeyCode.C) System.gc();
     }
 
     public void handleKeyReleased(KeyEvent event) {
@@ -212,41 +201,28 @@ class Game extends Pane implements CloudsListener {
 
     @Override
     public void onCloudDestroyed(Cloud cloud) {
-        System.out.println("Cloud destroyed");
-        getChildren().removeAll(cloud.getDistanceLines());
+        boundingBoxes.remove(cloud);
+        distanceLines.remove(cloud);
     }
 
     @Override
     public void onCloudSpawned(Cloud cloud) {
-        for (Pond pond : ponds) {
-            cloud.addDistanceLineTo(pond);
+        boundingBoxes.add(cloud);
+        for(Pond pond : ponds) {
+            distanceLines.add(cloud, pond);
         }
-        //add distance lines to children if they are not already there
-        if(!getChildren().containsAll(cloud.getDistanceLines())) {
-            getChildren().addAll(cloud.getDistanceLines());
-        }
-        System.out.println("Cloud spawned");
     }
 }
 
 abstract class GameObject extends Group {
-    private final Rectangle boundingRect = new Rectangle();
     protected Translate myTranslation;
     protected Rotate myRotation;
     protected Scale myScale;
 
-    protected ArrayList<DistanceLine> distanceLines = new ArrayList<>();
-
     public GameObject() {
-        boundingRect.setFill(Color.TRANSPARENT);
-        boundingRect.setStrokeWidth(1);
-        boundingRect.setStroke(Color.YELLOW);
-        boundingRect.setVisible(false);
-
         myTranslation = new Translate();
         myRotation = new Rotate();
         myScale = new Scale();
-
 
         this.getTransforms().addAll(myTranslation, myRotation, myScale);
     }
@@ -258,9 +234,6 @@ abstract class GameObject extends Group {
     }
 
     public void scale(double sx, double sy) {
-//        // scale around center
-//        myScale.setPivotX(getBoundsInParent().getWidth() / 2);
-//        myScale.setPivotY(getBoundsInParent().getHeight() / 2);
         myScale.setX(sx);
         myScale.setY(sy);
     }
@@ -270,38 +243,9 @@ abstract class GameObject extends Group {
         myTranslation.setY(ty);
     }
 
-    void toggleBoundingRect() {
-        boundingRect.setVisible(!boundingRect.isVisible());
-    }
-
-    /*
-     * Needs to be called when any transformations are applied to the group or
-     *  its children
-     * */
-    protected void updateBoundingRect() {
-        Bounds groupBounds = getBoundsInParent();
-        boundingRect.setX(groupBounds.getMinX());
-        boundingRect.setY(groupBounds.getMinY());
-        boundingRect.setWidth(groupBounds.getWidth());
-        boundingRect.setHeight(groupBounds.getHeight());
-    }
-
-    Rectangle getBoundingRect() {
-        return boundingRect;
-    }
-
     public boolean interest(GameObject object) {
         return !Shape.intersect(this.getShape(), object.getShape())
                 .getBoundsInLocal().isEmpty();
-    }
-
-    public void addDistanceLineTo(GameObject object) {
-        DistanceLine line = new DistanceLine(this, object);
-        distanceLines.add(line);
-    }
-
-    public ArrayList<DistanceLine> getDistanceLines() {
-        return distanceLines;
     }
 
     abstract Shape getShape();
@@ -353,30 +297,30 @@ class Pond extends GameObject implements Updatable {
         waterLevelText.setTranslateY(waterLevelText.getLayoutBounds()
                 .getHeight() / 4);
 
-        updateBoundingRect();
     }
 }
 
 class Cloud extends GameObject implements Updatable {
+    private final double MIN_RADIUS = 40;
+    private final double MAX_RADIUS = 70;
     private static final double WIND_SPEED = 0.4;
-    private static final double WIND_DIRECTION = 45;
+    private static final double WIND_DIRECTION = 0;
     private CloudState state = CloudState.SPAWNED;
     private Vector position;
     private Vector velocity;
     private final Circle cloud;
     private final GameText percentText;
     private int saturation = 0;
-    private double speedOffset = Game.rand(40,70);
+    private double speedOffset = RandomGenerator.getRandomDouble(40, 70);
 
-    public Cloud(Point2D position, double initialRadius) {
-        cloud = new Circle(initialRadius, Color.rgb(255, 255, 255));
+    public Cloud(Point2D initPosition, double radius) {
+        cloud = new Circle(radius, Color.rgb(255, 255, 255));
+        translate(initPosition.getX(), initPosition.getY());
 
         percentText = new GameText();
         percentText.setFill(Color.BLUE);
-
         getChildren().addAll(cloud, percentText);
-
-        this.position = new Vector(position.getX(), position.getY());
+        this.position = new Vector(initPosition.getX(), initPosition.getY());
     }
 
     public boolean isRaining() {
@@ -403,13 +347,15 @@ class Cloud extends GameObject implements Updatable {
 
     @Override
     public void update(double FrameTime) {
+        if(isDead()) return;
+
         velocity = new Vector(WIND_SPEED * FrameTime * speedOffset,
                 Math.toRadians(WIND_DIRECTION), true);
         position = position.add(velocity);
 
         double radius = cloud.getRadius();
         // if the cloud is within the bounds of the screen then it is alive
-        if (position.getX() > 0 - radius && position.getX() < 800 + radius &&
+        if (state != CloudState.ALIVE && position.getX() > 0 - radius && position.getX() < 800 + radius &&
                 position.getY() > 0 - radius && position.getY() < 800 + radius) {
             state = CloudState.ALIVE;
         }
@@ -422,8 +368,7 @@ class Cloud extends GameObject implements Updatable {
         }
 
 
-        setTranslateX(position.getX());
-        setTranslateY(position.getY());
+        translate(position.getX(), position.getY());
 
         cloud.setFill(Color.rgb(255 - saturation, 255 - saturation,
                 255 - saturation));
@@ -431,12 +376,15 @@ class Cloud extends GameObject implements Updatable {
         percentText.setTranslateX(-percentText.getLayoutBounds().getWidth() / 2);
         percentText.setTranslateY(percentText.getLayoutBounds().getHeight() / 2);
 
-        updateBoundingRect();
+    }
 
-        for (DistanceLine line : getDistanceLines()) {
-            line.update();
-        }
-
+    public static Cloud createRandomCloud(boolean onScreen) {
+        double radius = RandomGenerator.getRandomDouble(40, 60);
+        double x = onScreen ? RandomGenerator.getRandomDouble(radius,
+                800-radius) : -radius-10;
+        double y = RandomGenerator.getRandomDouble(radius, 800-radius);
+        Point2D position = new Point2D(x, y);
+        return new Cloud(position, radius);
     }
 
     public boolean isDead() {
@@ -445,27 +393,29 @@ class Cloud extends GameObject implements Updatable {
 }
 
 class Helipad extends GameObject {
+    private final double BORDER_OFFSET = 10;
     Circle pad;
 
-    public Helipad(double radius, Point2D intialPosition) {
+    public Helipad(double radius, Point2D initialPosition) {
         pad = new Circle(radius);
-        pad.setFill(Color.TRANSPARENT);
+        pad.setFill(Color.DARKGRAY);
         pad.setStroke(Color.GRAY);
         pad.setStrokeWidth(2);
 
         Bounds bounds = pad.getBoundsInParent();
-        Rectangle border = new Rectangle(bounds.getMinX() - 10,
-                bounds.getMinY() - 10,
-                bounds.getWidth() + 20, bounds.getHeight() + 20);
+        Rectangle border = new Rectangle(
+                bounds.getMinX() - BORDER_OFFSET,
+                bounds.getMinY() - BORDER_OFFSET,
+                bounds.getWidth() + BORDER_OFFSET * 2,
+                bounds.getHeight() + BORDER_OFFSET * 2
+        );
         border.setStroke(Color.GRAY);
         border.setStrokeWidth(2);
-        border.setFill(Color.TRANSPARENT);
+        border.setFill(Color.DARKGRAY);
 
-        getChildren().addAll(pad, border);
+        getChildren().addAll(border, pad);
 
-        translate(intialPosition.getX(), intialPosition.getY());
-        updateBoundingRect();
-
+        translate(initialPosition.getX(), initialPosition.getY());
     }
 
     @Override
@@ -583,7 +533,6 @@ class Helicopter extends GameObject implements Updatable {
         calculateNewPosition(frameTime);
         move();
         updateLabels();
-        updateBoundingRect();
 
         // increase the size if the helicopter is started and not ready
         if (currState == startingState) {
@@ -604,8 +553,7 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     public void seedCloud(Cloud cloud) {
-        cloud.saturate();
-        water--;
+        currState.seedCloud(cloud);
     }
 
     void setOnCrash(Runnable action) {
@@ -697,41 +645,24 @@ class Helicopter extends GameObject implements Updatable {
  */
 
 class GameObjectPane<T extends GameObject> extends Pane implements Iterable<T> {
-    private boolean boundingRectVisible = false;
-    private final List<T> objects = new ArrayList<>();
 
     public void add(T object) {
-        objects.add(object);
-        getChildren().addAll(object, object.getBoundingRect());
-        if(boundingRectVisible) {
-            object.toggleBoundingRect();
-        }
+        getChildren().addAll(object);
     }
 
     public void remove(T object) {
-        objects.remove(object);
-        getChildren().removeAll(object, object.getBoundingRect());
-    }
-
-    public void toggleBoundingRects() {
-        for (T object : objects) {
-            object.toggleBoundingRect();
-        }
-        boundingRectVisible = !boundingRectVisible;
+        getChildren().removeAll(object);
     }
 
     public void clear() {
-        objects.clear();
         getChildren().clear();
     }
 
-    public List<T> getObjects() {
-        return objects;
-    }
+    //public List getObjects() { return getChildren(); }
 
     @Override
-    public Iterator<T> iterator() {
-        return objects.iterator();
+    public Iterator iterator() {
+        return getChildren().iterator();
     }
 }
 
@@ -743,62 +674,74 @@ interface CloudsListener {
 class Clouds extends GameObjectPane<Cloud> implements Updatable {
     private static final int MAX_CLOUDS = 5;
     private static final int MIN_CLOUDS = 2;
-    private static final double CLOUD_RADIUS = 50;
     private List<CloudsListener> listeners = new ArrayList<>();
-
-    private final Random random = new Random();
-
     public Clouds() {
+        AnimationTimer timer = new AnimationTimer() {
+            double old = -1;
+            @Override
+            public void handle(long now) {
+                if (old < 0) { old = now; return;}
+                double frameTime = (now - old) / 1e9;
+                old = now;
+                update(frameTime);
+            }
+        };
+        timer.start();
     }
 
     public void addListener(CloudsListener listener) {
         listeners.add(listener);
     }
 
-    private Point2D randomSpawnPoint() {
-        return new Point2D(-CLOUD_RADIUS, Game.rand(0, 800));
-    }
-
     private void notifyCloudSpawned(Cloud cloud) {
         listeners.forEach(l -> l.onCloudSpawned(cloud));
     }
+
     private void notifyCloudDestroyed(Cloud cloud) {
         listeners.forEach(l -> l.onCloudDestroyed(cloud));
     }
 
-    private void spawnCloud() {
-        Cloud cloud = new Cloud(randomSpawnPoint(), CLOUD_RADIUS);
-        add(cloud);
-        notifyCloudSpawned(cloud);
-    }
-
+    private double elapsed = 0;
     @Override
     public void update(double frameTime) {
+        elapsed += frameTime;
+
         // add initial clouds
-        if (getObjects().isEmpty()) {
+        if (getChildren().isEmpty()) {
             for (int i = 0; i < MAX_CLOUDS; i++) {
-                spawnCloud();
+                Cloud cloud = Cloud.createRandomCloud(true);
+                add(cloud);
+                notifyCloudSpawned(cloud);
             }
             return;
         }
 
         // Not using iterator to avoid concurrent modification exception
-        for (int i = 0; i < getObjects().size(); i++) {
-            Cloud cloud = getObjects().get(i);
+        for (int i = 0; i < getChildren().size(); i++) {
+            Cloud cloud = (Cloud) getChildren().get(i);
             cloud.update(frameTime);
 
             if (!cloud.isDead()) continue;
 
             remove(cloud);
             notifyCloudDestroyed(cloud);
+        }
 
-            if (getObjects().size() <= MIN_CLOUDS) {
-                spawnCloud();
-            }
+        if(getChildren().size() >= MAX_CLOUDS) return;
 
-            if (Math.random() < 0.5) {
-                spawnCloud();
-            }
+        if (getChildren().size() <= MIN_CLOUDS) {
+            Cloud cloud = Cloud.createRandomCloud(false);
+            add(cloud);
+            notifyCloudSpawned(cloud);
+        }
+
+        if (elapsed < 5) return;
+        elapsed = 0;
+
+        if (RandomGenerator.flipCoin() == CoinSide.HEADS) {
+            Cloud cloud = Cloud.createRandomCloud(false);
+            add(cloud);
+            notifyCloudSpawned(cloud);
         }
     }
 }
@@ -810,7 +753,7 @@ class Ponds extends GameObjectPane<Pond> implements Updatable {
     public Ponds(Bounds bounds, ArrayList<Bounds> obstacles) {
         this.windowBounds = bounds;
         this.obstacles = obstacles;
-        while (getObjects().size() < TOTAL_PONDS) {
+        while (getChildren().size() < TOTAL_PONDS) {
             double randArea = getRandomArea();
             Point2D randSpawn = randomSpawnPoint(convertAreaToRadius(randArea));
             Pond pond = new Pond(randSpawn, randArea);
@@ -821,11 +764,11 @@ class Ponds extends GameObjectPane<Pond> implements Updatable {
     }
 
     private double getRandomArea() {
-        return Game.rand(2000, 5000);
+        return RandomGenerator.getRandomDouble(2000, 5000);
     }
 
     private boolean closeToAnotherPond(Pond pond) {
-        for (Pond p : getObjects()) {
+        for (Pond p : this) {
             if (distanceBetween(p, pond) < 200) return true;
         }
         return false;
@@ -851,7 +794,7 @@ class Ponds extends GameObjectPane<Pond> implements Updatable {
     }
 
     private boolean overlapsAnotherPond(Pond pond) {
-        for (Pond p : getObjects()) {
+        for (Pond p : this) {
             if (p.interest(pond)) {
                 return true;
             }
@@ -865,16 +808,16 @@ class Ponds extends GameObjectPane<Pond> implements Updatable {
 
     private Point2D randomSpawnPoint(double radius) {
         return new Point2D(
-                Game.rand(radius, windowBounds.getWidth() - radius),
-                Game.rand(radius, windowBounds.getHeight() - radius)
+                RandomGenerator.getRandomDouble(radius, windowBounds.getWidth() - radius),
+                RandomGenerator.getRandomDouble(radius, windowBounds.getHeight() - radius)
         );
     }
 
     @Override
     public void update(double FrameTime) {
         // not using iterator to avoid concurrent modification exception
-        for (int i = 0; i < getObjects().size(); i++) {
-            getObjects().get(i).update(FrameTime);
+        for (int i = 0; i < getChildren().size(); i++) {
+            ((Pond)getChildren().get(i)).update(FrameTime);
         }
     }
 }
@@ -887,7 +830,6 @@ class ImageBackground extends Pane {
         background.setFitHeight(height);
         getChildren().add(background);
     }
-
 }
 
 abstract class HelicopterState {
@@ -1046,7 +988,7 @@ class HelicopterReadyState extends HelicopterState {
 
     @Override
     void seedCloud(Cloud cloud) {
-
+        cloud.saturate();
     }
 
     @Override
@@ -1222,27 +1164,154 @@ class GameText extends Text {
     }
 }
 
+class ObjectBoundingBox extends Rectangle {
+    private GameObject object;
+    public ObjectBoundingBox(GameObject object) {
+        this.object = object;
+        setFill(Color.TRANSPARENT);
+        setStrokeWidth(1);
+        setStroke(Color.YELLOW);
+
+        update(object.getBoundsInParent());
+
+        object.boundsInParentProperty()
+                .addListener((observable, oldValue, newValue) -> {
+            update(newValue);
+        });
+    }
+
+    private void update(Bounds bounds) {
+        setX(bounds.getMinX());
+        setY(bounds.getMinY());
+        setWidth(bounds.getWidth());
+        setHeight(bounds.getHeight());
+    }
+
+    public GameObject getObject() {
+        return object;
+    }
+}
+
+class BoundingBoxPane extends Pane {
+    public BoundingBoxPane() {
+        setVisible(false);
+    }
+
+    public void toggleVisibility() {
+        setVisible(!isVisible());
+    }
+
+    public void add(GameObject obj) {
+        getChildren().add(new ObjectBoundingBox(obj));
+    }
+
+    public void addAll(GameObject... objects) {
+        for (GameObject obj : objects) {
+            add(obj);
+        }
+    }
+
+    public void remove(GameObject obj) {
+        getChildren().removeIf(node -> {
+            if (node instanceof ObjectBoundingBox) {
+                ObjectBoundingBox box = (ObjectBoundingBox) node;
+                return box.getObject() == obj;
+            }
+            return false;
+        });
+    }
+}
+
 class DistanceLine extends Line {
     public GameObject object1;
     public GameObject object2;
     public DistanceLine(GameObject obj1, GameObject obj2) {
         setStroke(Color.YELLOW);
-        setStrokeWidth(2);
+        setStrokeWidth(1);
 
         object1 = obj1;
         object2 = obj2;
 
-        setStartX(object1.getBoundsInParent().getCenterX());
-        setStartY(object1.getBoundsInParent().getCenterY());
-        setEndX(object2.getBoundsInParent().getCenterX());
-        setEndY(object2.getBoundsInParent().getCenterY());
+        // Initial updated needed since pond doesn't translate after creation
+        setStartX(obj1.getBoundsInParent().getCenterX());
+        setStartY(obj1.getBoundsInParent().getCenterY());
+        setEndX(obj2.getBoundsInParent().getCenterX());
+        setEndY(obj2.getBoundsInParent().getCenterY());
+
+        object1.boundsInParentProperty()
+                .addListener((observable, oldValue, newValue) -> {
+                    setStartX(newValue.getCenterX());
+                    setStartY(newValue.getCenterY());
+        });
+        object2.boundsInParentProperty()
+                .addListener((observable, oldValue, newValue) -> {
+                    setEndX(newValue.getCenterX());
+                    setEndY(newValue.getCenterY());
+        });
     }
 
-    public void update() {
-        setStartX(object1.getBoundsInParent().getCenterX());
-        setStartY(object1.getBoundsInParent().getCenterY());
-        setEndX(object2.getBoundsInParent().getCenterX());
-        setEndY(object2.getBoundsInParent().getCenterY());
+    public boolean hasObjects(GameObject obj1, GameObject obj2) {
+        return (object1 == obj1 && object2 == obj2) ||
+                (object1 == obj2 && object2 == obj1);
+    }
+
+    public boolean hasObject(GameObject obj) {
+        return object1 == obj || object2 == obj;
+    }
+
+    /**
+     * Maybe needed if property binding not allowed
+     */
+    private void update() {
+    }
+}
+
+class DistanceLinesPane extends Pane {
+    public DistanceLinesPane() {
+        setVisible(false);
+    }
+
+    public void toggleVisibility() {
+        setVisible(!isVisible());
+    }
+
+    public void add(GameObject obj1, GameObject obj2) {
+        getChildren().add(new DistanceLine(obj1, obj2));
+    }
+
+    public void addAll(GameObject... objects) {
+        for (int i = 0; i < objects.length; i++) {
+            for (int j = i + 1; j < objects.length; j++) {
+                add(objects[i], objects[j]);
+            }
+        }
+    }
+
+    public void remove(GameObject obj) {
+        getChildren().removeIf(node -> {
+            if (node instanceof DistanceLine) {
+                DistanceLine line = (DistanceLine) node;
+                return line.hasObject(obj);
+            }
+            return false;
+        });
+    }
+}
+
+enum CoinSide {
+    HEADS, TAILS
+}
+
+class RandomGenerator {
+    private static Random random = new Random();
+    public static int getRandomInt(int min, int max) {
+        return random.nextInt(max - min + 1) + min;
+    }
+    public static double getRandomDouble(double min, double max) {
+        return random.nextDouble() * (max - min) + min;
+    }
+    public static CoinSide flipCoin() {
+        return random.nextBoolean() ? CoinSide.HEADS : CoinSide.TAILS;
     }
 }
 
