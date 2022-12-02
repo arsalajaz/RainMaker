@@ -1,12 +1,9 @@
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
-import javafx.collections.ListChangeListener;
-import javafx.collections.ObservableList;
 import javafx.geometry.BoundingBox;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
-import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
@@ -90,20 +87,28 @@ class Game extends Pane implements CloudsListener {
         init();
         animationTimer = new AnimationTimer() {
             double old = -1;
-            double cloudSeedingTime = 0;
-            double rainRate = 0;
+
             @Override
             public void handle(long now) {
-                if (old < 0) {
-                    old = now;
-                    return;
-                }
+                if (old < 0) { old = now; return; }
                 double FrameTime = (now - old) / 1e9;
                 old = now;
-                cloudSeedingTime += FrameTime;
-                rainRate += FrameTime;
 
                 update(FrameTime);
+
+                for (Cloud cloud : clouds) {
+                    if(!cloud.isRaining()) continue;
+                    for (Pond pond : ponds) {
+                        int distance = (int)DistanceLine.getDistance(cloud, pond);
+                        double pondDiameter = pond.getRadius() * 2;
+                        double maxDistance = pondDiameter * 4;
+                        if (distance >= maxDistance) continue;
+                        double saturationProp =
+                                (double)cloud.getSaturation()/100;
+                        double distanceProp = 1 - (distance / maxDistance);
+                        pond.addWater(distanceProp * saturationProp * FrameTime * 2);
+                    }
+                }
             }
         };
 
@@ -116,9 +121,30 @@ class Game extends Pane implements CloudsListener {
         ponds.update(FrameTime);
     }
 
-    void onCopterCrash() {
+    void handleCopterCrash() {
         animationTimer.stop();
         String msg = "Game Over! Would you like to play again?";
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, msg,
+                ButtonType.YES, ButtonType.NO);
+        alert.setOnHidden(e -> {
+            if (alert.getResult() == ButtonType.YES) {
+                init();
+                animationTimer.start();
+            } else {
+                stageClose.run();
+            }
+        });
+        alert.show();
+    }
+
+    void handleCopterLanded() {
+        if(ponds.getAvgWaterLevel() < 80) return;
+
+        animationTimer.stop();
+
+        double score = (ponds.getAvgWaterLevel()/100) * (double)helicopter.getFuel();
+        String msg = "You Win! Your score is " + (int)score + ". " +
+                "Would you like to play again?";
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, msg,
                 ButtonType.YES, ButtonType.NO);
         alert.setOnHidden(e -> {
@@ -138,7 +164,8 @@ class Game extends Pane implements CloudsListener {
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
 
         helicopter = new Helicopter(5000, COPTER_INITIAL_POS, 25000);
-        helicopter.setOnCrash(this::onCopterCrash);
+        helicopter.setOnCrash(this::handleCopterCrash);
+        helicopter.setOnLandedAction(this::handleCopterLanded);
         helicopter.setLandingLocation(helipad);
 
         // A pond won't spawn on the helipad, can be used to add more obstacles
@@ -172,6 +199,13 @@ class Game extends Pane implements CloudsListener {
         if (isKeyDown(KeyCode.DOWN)) helicopter.speedDown();
         if (isKeyDown(KeyCode.RIGHT)) helicopter.turnRight();
         if (isKeyDown(KeyCode.LEFT)) helicopter.turnLeft();
+        if (isKeyDown(KeyCode.SPACE)) {
+            for (Cloud cloud : clouds) {
+                if (helicopter.interest(cloud)) {
+                    helicopter.seedCloud(cloud);
+                }
+            }
+        }
         if (event.getCode() == KeyCode.I) {
             if (helicopter.getState() == helicopter.getOffState())
                 helicopter.takeOff();
@@ -182,22 +216,14 @@ class Game extends Pane implements CloudsListener {
         if (event.getCode() == KeyCode.D) distanceLines.toggleVisibility();
         if (event.getCode() == KeyCode.R) init();
         if (event.getCode() == KeyCode.C) System.gc();
-        if (event.getCode() == KeyCode.SPACE) {
-            for (Cloud cloud : clouds) {
-                if (helicopter.interest(cloud)) {
-                    helicopter.seedCloud(cloud);
-                }
-            }
-        }
+
     }
 
     public void handleKeyReleased(KeyEvent event) {
         keysDown.remove(event.getCode());
     }
 
-    private boolean isKeyDown(KeyCode k) {
-        return keysDown.contains(k);
-    }
+    private boolean isKeyDown(KeyCode k) { return keysDown.contains(k); }
 
     @Override
     public void onCloudDestroyed(Cloud cloud) {
@@ -255,18 +281,31 @@ class Pond extends GameObject implements Updatable {
     private final GameText waterLevelText = new GameText();
     Circle pondShape = new Circle();
     private double pondArea;
-    private int waterLevel = 0;
+    private double waterLevel = 0;
 
-    public Pond(Point2D initialPosition, double initialArea) {
+    public Pond(Point2D initialPosition, int initialWater, double initialArea) {
         pondArea = initialArea;
         pondShape.setRadius(getRadius());
         pondShape.setFill(Color.BLUE);
 
+        this.waterLevel = initialWater;
+        waterLevelText.setText(String.valueOf(waterLevel));
         waterLevelText.setFill(Color.WHITE);
 
         getChildren().addAll(pondShape, waterLevelText);
         setTranslateX(initialPosition.getX());
         setTranslateY(initialPosition.getY());
+    }
+
+    public static Pond generatePond() {
+        int waterLevel = RandomGenerator.getRandomInt(10,30);
+        int initialArea = waterLevel * 100;
+        double radius = getRadius(initialArea);
+        double x = RandomGenerator.getRandomDouble(radius,
+                GameApp.GAME_WIDTH-radius);
+        double y = RandomGenerator.getRandomDouble(radius,
+                GameApp.GAME_WIDTH-radius);
+        return new Pond(new Point2D(x, y), waterLevel, initialArea);
     }
 
     public static double getRadius(double area) {
@@ -277,9 +316,13 @@ class Pond extends GameObject implements Updatable {
         return Math.sqrt(pondArea / Math.PI);
     }
 
-    public void addWater() {
-        pondArea += 50;
-        waterLevel++;
+    public void addWater(double water) {
+        pondArea += 100*water;
+        waterLevel += water;
+    }
+
+    public double getCurrentWaterLevel() {
+        return waterLevel;
     }
 
     @Override
@@ -291,7 +334,7 @@ class Pond extends GameObject implements Updatable {
     public void update(double FrameTime) {
         pondShape.setRadius(getRadius());
 
-        waterLevelText.setText(String.valueOf(waterLevel));
+        waterLevelText.setText(String.valueOf((int)waterLevel));
         waterLevelText.setTranslateX(-waterLevelText.getLayoutBounds()
                 .getWidth() / 2);
         waterLevelText.setTranslateY(waterLevelText.getLayoutBounds()
@@ -324,7 +367,11 @@ class Cloud extends GameObject implements Updatable {
     }
 
     public boolean isRaining() {
-        return saturation > 0;
+        return saturation >= 30;
+    }
+
+    public int getSaturation() {
+        return saturation;
     }
 
     public CloudState getState() {
@@ -332,6 +379,7 @@ class Cloud extends GameObject implements Updatable {
     }
 
     public void rain() {
+        if(saturation <= 0) return;
         saturation--;
     }
 
@@ -445,6 +493,7 @@ class Helicopter extends GameObject implements Updatable {
     private int fuel;
     private Runnable onCrashAction;
     private Helipad helipad;
+    private Runnable onLandedAction;
 
     public Helicopter(int initialWater, Vector initialPosition, int initialFuel) {
         water = initialWater;
@@ -550,6 +599,14 @@ class Helicopter extends GameObject implements Updatable {
         stateText.setText(currState.toString());
         stateText.setTranslateX(-stateText.getLayoutBounds().getWidth() / 2);
         stateText.setTranslateY(-30 - fuelText.getLayoutBounds().getHeight());
+    }
+
+    public void setOnLandedAction(Runnable action) {
+        this.onLandedAction = action;
+    }
+
+    public Runnable getOnLandedAction() {
+        return onLandedAction;
     }
 
     public void seedCloud(Cloud cloud) {
@@ -702,9 +759,11 @@ class Clouds extends GameObjectPane<Cloud> implements Updatable {
     }
 
     private double elapsed = 0;
+    private double rainElapsed = 0;
     @Override
     public void update(double frameTime) {
         elapsed += frameTime;
+        rainElapsed += frameTime;
 
         // add initial clouds
         if (getChildren().isEmpty()) {
@@ -714,6 +773,13 @@ class Clouds extends GameObjectPane<Cloud> implements Updatable {
                 notifyCloudSpawned(cloud);
             }
             return;
+        }
+        //every second, cloud losses 1% saturation
+        if (rainElapsed >= 0.5) {
+            rainElapsed = 0;
+            for (Cloud cloud : this) {
+                cloud.rain();
+            }
         }
 
         // Not using iterator to avoid concurrent modification exception
@@ -747,6 +813,8 @@ class Clouds extends GameObjectPane<Cloud> implements Updatable {
 }
 
 class Ponds extends GameObjectPane<Pond> implements Updatable {
+
+    private double avgWaterLevel = 0;
     private static final int TOTAL_PONDS = 3;
     private final Bounds windowBounds;
     private final ArrayList<Bounds> obstacles;
@@ -754,17 +822,11 @@ class Ponds extends GameObjectPane<Pond> implements Updatable {
         this.windowBounds = bounds;
         this.obstacles = obstacles;
         while (getChildren().size() < TOTAL_PONDS) {
-            double randArea = getRandomArea();
-            Point2D randSpawn = randomSpawnPoint(convertAreaToRadius(randArea));
-            Pond pond = new Pond(randSpawn, randArea);
+            Pond pond = Pond.generatePond();
             if (overlapsAnotherPond(pond) || overlapsObstacle(pond)
              || closeToAnotherPond(pond)) continue;
             add(pond);
         }
-    }
-
-    private double getRandomArea() {
-        return RandomGenerator.getRandomDouble(2000, 5000);
     }
 
     private boolean closeToAnotherPond(Pond pond) {
@@ -819,6 +881,17 @@ class Ponds extends GameObjectPane<Pond> implements Updatable {
         for (int i = 0; i < getChildren().size(); i++) {
             ((Pond)getChildren().get(i)).update(FrameTime);
         }
+
+        // update average water level
+        double totalWaterLevel = 0;
+        for (Pond pond : this) {
+            totalWaterLevel += pond.getCurrentWaterLevel();
+        }
+        avgWaterLevel = totalWaterLevel / getChildren().size();
+    }
+
+    public double getAvgWaterLevel() {
+        return avgWaterLevel;
     }
 }
 
@@ -1021,9 +1094,10 @@ class HelicopterStoppingState extends HelicopterState {
 
     @Override
     void stopEngine() {
-        helicopter.getBlade().setOnStoppedRotating(() ->
-                helicopter.setState(helicopter.getOffState())
-        );
+        helicopter.getBlade().setOnStoppedRotating(() -> {
+            helicopter.setState(helicopter.getOffState());
+            helicopter.getOnLandedAction().run();
+        });
         helicopter.getBlade().stopSpinning();
     }
 
@@ -1222,32 +1296,34 @@ class BoundingBoxPane extends Pane {
     }
 }
 
-class DistanceLine extends Line {
-    public GameObject object1;
-    public GameObject object2;
+class DistanceLine extends Group {
+    private Line line;
+    private GameObject object1;
+    private GameObject object2;
+
+    private GameText distanceText;
+
     public DistanceLine(GameObject obj1, GameObject obj2) {
-        setStroke(Color.YELLOW);
-        setStrokeWidth(1);
+        line = new Line();
+        line.setStroke(Color.YELLOW);
+        line.setStrokeWidth(1);
 
         object1 = obj1;
         object2 = obj2;
+        distanceText = new GameText();
+        distanceText.setFill(Color.YELLOW);
 
-        // Initial updated needed since pond doesn't translate after creation
-        setStartX(obj1.getBoundsInParent().getCenterX());
-        setStartY(obj1.getBoundsInParent().getCenterY());
-        setEndX(obj2.getBoundsInParent().getCenterX());
-        setEndY(obj2.getBoundsInParent().getCenterY());
-
+        update();
         object1.boundsInParentProperty()
                 .addListener((observable, oldValue, newValue) -> {
-                    setStartX(newValue.getCenterX());
-                    setStartY(newValue.getCenterY());
+                    update();
         });
         object2.boundsInParentProperty()
                 .addListener((observable, oldValue, newValue) -> {
-                    setEndX(newValue.getCenterX());
-                    setEndY(newValue.getCenterY());
+                    update();
         });
+
+        getChildren().addAll(line, distanceText);
     }
 
     public boolean hasObjects(GameObject obj1, GameObject obj2) {
@@ -1259,10 +1335,42 @@ class DistanceLine extends Line {
         return object1 == obj || object2 == obj;
     }
 
+    public double getDistance() {
+        double x1 = object1.getBoundsInParent().getCenterX();
+        double y1 = object1.getBoundsInParent().getCenterY();
+        double x2 = object2.getBoundsInParent().getCenterX();
+        double y2 = object2.getBoundsInParent().getCenterY();
+
+        return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    }
+
+    public static double getDistance(GameObject obj1, GameObject obj2) {
+        double x1 = obj1.getBoundsInParent().getCenterX();
+        double y1 = obj1.getBoundsInParent().getCenterY();
+        double x2 = obj2.getBoundsInParent().getCenterX();
+        double y2 = obj2.getBoundsInParent().getCenterY();
+
+        return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    }
+
     /**
      * Maybe needed if property binding not allowed
      */
     private void update() {
+        double x1 = object1.getBoundsInParent().getCenterX();
+        double y1 = object1.getBoundsInParent().getCenterY();
+        double x2 = object2.getBoundsInParent().getCenterX();
+        double y2 = object2.getBoundsInParent().getCenterY();
+
+        line.setStartX(x1);
+        line.setStartY(y1);
+        line.setEndX(x2);
+        line.setEndY(y2);
+
+        double distance = getDistance();
+        distanceText.setText(String.format("%.2f", distance));
+        distanceText.setX((x1 + x2) / 2);
+        distanceText.setY((y1 + y2) / 2);
     }
 }
 
