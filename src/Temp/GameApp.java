@@ -495,7 +495,6 @@ class Helicopter extends GameObject implements Updatable {
     private final HelicopterState startingState;
     private final HelicopterState readyState;
     private final HelicopterState stoppingState;
-    private final boolean landed = true;
     private final GameText fuelText;
     private final GameText stateText;
     private final HeloBody heloBody;
@@ -505,7 +504,7 @@ class Helicopter extends GameObject implements Updatable {
     private double speed = 0;
     private Vector position;
     private int water;
-    private int fuel;
+    private double fuel;
     private Runnable onCrashAction;
     private Helipad helipad;
     private Runnable onLandedAction;
@@ -598,16 +597,11 @@ class Helicopter extends GameObject implements Updatable {
         move();
         updateLabels();
 
-        // increase the size if the helicopter is started and not ready
-        if (currState == startingState) {
-            scale(getScaleX() + 0.01, getScaleY() + 0.01);
-        }
-
         currState.consumeFuel(frameTime);
     }
 
     private void updateLabels() {
-        fuelText.setText("F: " + fuel);
+        fuelText.setText("F: " + (int)fuel);
         fuelText.setTranslateX(-fuelText.getLayoutBounds().getWidth() / 2);
         fuelText.setTranslateY(-30);
 
@@ -655,11 +649,11 @@ class Helicopter extends GameObject implements Updatable {
         speed = round(speed - ACCELERATION, 1);
     }
 
-    public int getFuel() {
+    public double getFuel() {
         return fuel;
     }
 
-    public void setFuel(int fuel) {
+    public void setFuel(double fuel) {
         this.fuel = fuel;
     }
 
@@ -991,9 +985,10 @@ class HelicopterStartingState extends HelicopterState {
 
     @Override
     void startEngine() {
-        helicopter.getBlade().setOnMaxRotationalSpeed(() ->
-                helicopter.setState(helicopter.getReadyState())
-        );
+        helicopter.getBlade().setOnMaxRotationalSpeed(() -> {
+            helicopter.setState(helicopter.getReadyState());
+            System.out.println(helicopter.getFuel());
+        });
         helicopter.getBlade().startSpinning();
     }
 
@@ -1021,13 +1016,14 @@ class HelicopterStartingState extends HelicopterState {
     @Override
     void consumeFuel(double rate) {
         double fuel = helicopter.getFuel();
-        helicopter.setFuel((int) (fuel - (3 * rate)));
+        helicopter.setFuel((fuel - 10 * rate));
 
         if (helicopter.getFuel() <= 0) {
             helicopter.setState(helicopter.getStoppingState());
             helicopter.getState().stopEngine();
             helicopter.crash();
         }
+
     }
 
     public String toString() {
@@ -1083,7 +1079,9 @@ class HelicopterReadyState extends HelicopterState {
     void consumeFuel(double rate) {
         double fuel = helicopter.getFuel();
         double speed = helicopter.getSpeed();
-        helicopter.setFuel((int) (fuel - Math.abs(speed) * rate - (3 * rate)));
+        double speedConsumption = 5 * Math.abs(speed) * rate;
+        double hoverConsumption = 20 * rate;
+        helicopter.setFuel((fuel - speedConsumption - hoverConsumption));
 
         if (helicopter.getFuel() <= 0) {
             helicopter.setState(helicopter.getStoppingState());
@@ -1163,7 +1161,8 @@ class HeloBody extends Rectangle {
 */
 class HeloBlade extends Circle {
     public static final double MAX_ROTATIONAL_SPEED = 1000;
-    public static final double INITIAL_ROTATION = 45;
+    public static final double INITIAL_ROTATION_ANGLE = 45;
+    private static final double ROTATION_ANGLE_INCREMENT = 200;
     private BladeState currState;
     private double rotationalSpeed;
     private Runnable onMaxRotationalSpeed;
@@ -1177,7 +1176,7 @@ class HeloBlade extends Circle {
         currState = BladeState.STOPPED;
 
         setScaleY(-1);
-        setRotate(INITIAL_ROTATION);
+        setRotate(INITIAL_ROTATION_ANGLE);
         AnimationTimer loop = new AnimationTimer() {
             double old = 0;
             double elapsed = 0;
@@ -1194,11 +1193,8 @@ class HeloBlade extends Circle {
 
                 setRotate(getRotate() - rotationalSpeed * frameTime);
 
-                if (elapsed < 0.5) return;
-                elapsed = 0;
-
                 if (currState == BladeState.INCREASING_SPEED) {
-                    rotationalSpeed += 100;
+                    rotationalSpeed += ROTATION_ANGLE_INCREMENT*frameTime;
                     if (rotationalSpeed >= MAX_ROTATIONAL_SPEED) {
                         rotationalSpeed = MAX_ROTATIONAL_SPEED;
 
@@ -1208,7 +1204,7 @@ class HeloBlade extends Circle {
                         currState = BladeState.AT_MAX_SPEED;
                     }
                 } else if (currState == BladeState.DECREASING_SPEED) {
-                    rotationalSpeed -= 100;
+                    rotationalSpeed -= ROTATION_ANGLE_INCREMENT*frameTime;
                     if (rotationalSpeed <= 0) {
                         rotationalSpeed = 0;
                         if (onStopRotating != null)
