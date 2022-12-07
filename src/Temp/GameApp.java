@@ -269,8 +269,9 @@ abstract class GameObject extends Group {
     }
 
     public boolean interest(GameObject object) {
-        return !Shape.intersect(this.getShape(), object.getShape())
-                .getBoundsInLocal().isEmpty();
+        Bounds myBounds = this.getBoundsInParent();
+        Bounds otherBounds = object.getBoundsInParent();
+        return myBounds.intersects(otherBounds);
     }
 
     abstract Shape getShape();
@@ -351,15 +352,14 @@ class Cloud extends GameObject implements Updatable {
     private Vector position;
     private Vector velocity;
     private final Circle cloud;
-    private final Shape cloudShape;
+    private final BezierOval cloudShape;
     private final GameText percentText;
     private int saturation = 0;
     private double speedOffset = RandomGenerator.getRandomDouble(40, 70);
 
     public Cloud(Point2D initPosition, Point2D shapeSize) {
         cloud = new Circle(20, Color.rgb(255, 255, 255));
-        cloudShape =
-                new BezierOval(shapeSize.getX(), shapeSize.getY()).getShape();
+        cloudShape = new BezierOval(shapeSize.getX(), shapeSize.getY());
         cloudShape.setFill(Color.rgb(255, 255, 255));
         translate(initPosition.getX(), initPosition.getY());
 
@@ -393,7 +393,7 @@ class Cloud extends GameObject implements Updatable {
 
     @Override
     Shape getShape() {
-        return cloudShape;
+        return null;
     }
 
     @Override
@@ -1466,6 +1466,9 @@ class RandomGenerator {
 }
 
 class BezierOval extends Group {
+    private double radiusX;
+    private double radiusY;
+    private Shape shape;
     Ellipse oval;
     ArrayList<Point2D> randPointsOnOval = new ArrayList<>();
     ArrayList<Integer> angles = new ArrayList<>();
@@ -1474,21 +1477,30 @@ class BezierOval extends Group {
     public BezierOval(double radiusX, double radiusY) {
         oval = new Ellipse(radiusX, radiusY);
         oval.setFill(Color.WHITE);
+
+        this.radiusX = radiusX;
+        this.radiusY = radiusY;
+
         createShape();
-        showControlPoints();
     }
 
     private void createShape() {
-        int angle = 0;
-        int angleSum = 0;
-        while(angle <= 360 ) {
-            double x = oval.getRadiusX() * Math.sin(Math.toRadians(angle));
-            double y = oval.getRadiusY() * Math.cos(Math.toRadians(angle));
+        int startAngle = 0;
+        int offsetAngle = RandomGenerator.getRandomInt(0, 100);
+        int angle = startAngle;
+        while(angle <= 360 + startAngle + offsetAngle) {
+            int currentAngle = angle;
+            if(angle >= 360 + startAngle + offsetAngle) {
+                currentAngle = 360 + startAngle + offsetAngle;
+            }
+
+            double x = radiusX * Math.sin(Math.toRadians(currentAngle));
+            double y = radiusY * Math.cos(Math.toRadians(currentAngle));
 
             randPointsOnOval.add(new Point2D(x,y));
-            angles.add(angle);
-            angleSum += angle;
-            angle += 72;
+            angles.add(currentAngle);
+            angle += 60;
+
 
             if(randPointsOnOval.size() == 1) continue;
 
@@ -1513,7 +1525,7 @@ class BezierOval extends Group {
             double controlX = (prev.getX() + curr.getX()) / 2;
             double controlY = (prev.getY() + curr.getY()) / 2;
 
-            int randOffset = RandomGenerator.getRandomInt(10, 20);
+            int randOffset = RandomGenerator.getRandomInt(10, 25);
             if(controlY > 0) {
                 controlY += randOffset;
             } else {
@@ -1529,36 +1541,38 @@ class BezierOval extends Group {
             curve.setControlY(controlY);
             curve.setStroke(Color.BLACK);
             curve.setStrokeWidth(1);
-            curve.setFill(Color.WHITE);
-
             quadCurves.add(curve);
         }
-        getChildren().add(oval);
-        getChildren().addAll(quadCurves);
 
+        this.shape = generateShape();
+        getChildren().addAll(this.shape);
 
-//        getElements().add(new MoveTo(randPointsOnOval.get(0).getX(), randPointsOnOval.get(0).getY()));
-//        for(QuadCurve curve : quadCurves) {
-//            getElements().add(new QuadCurveTo(curve.getControlX(), curve.getControlY(), curve.getEndX(), curve.getEndY()));
-//        }
-//        getElements().add(new ClosePath());
-//
-//        setFill(Color.RED);
+    }
+    public void setFill(Color color) {
+        shape.setFill(color);
     }
 
-    public Shape getShape() {
+    public void setStroke(Color color) {
+        shape.setStroke(color);
+    }
+
+    public void setStrokeWidth(double width) {
+        shape.setStrokeWidth(width);
+    }
+
+    private Shape generateShape() {
         //combine all quad curves into one path
         Path path = new Path();
         path.getElements().add(new MoveTo(randPointsOnOval.get(0).getX(), randPointsOnOval.get(0).getY()));
         for(QuadCurve curve : quadCurves) {
             path.getElements().add(new QuadCurveTo(curve.getControlX(), curve.getControlY(), curve.getEndX(), curve.getEndY()));
         }
-        path.getElements().add(new ClosePath());
-        path.setFill(Color.RED);
+        //path.getElements().add(new ClosePath());
         return path;
     }
 
-    private void showControlPoints() {
+
+    public void showControlPoints() {
         for(QuadCurve curve : quadCurves) {
             Circle circle = new Circle(curve.getControlX(), curve.getControlY(), 2);
             circle.setFill(Color.RED);
