@@ -1,12 +1,13 @@
-package GameObjects;
+package rainmaker.gameobjects;
 
+import javafx.geometry.Bounds;
 import javafx.scene.Group;
 import javafx.scene.shape.Shape;
 import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Scale;
 import javafx.scene.transform.Translate;
 
-abstract class GameObject extends Group {
+public abstract class GameObject extends Group {
     protected Translate myTranslation;
     protected Rotate myRotation;
     protected Scale myScale;
@@ -36,11 +37,10 @@ abstract class GameObject extends Group {
     }
 
     public boolean interest(GameObject object) {
-        return !Shape.intersect(this.getShape(), object.getShape())
-                .getBoundsInLocal().isEmpty();
+        Bounds myBounds = this.getBoundsInParent();
+        Bounds otherBounds = object.getBoundsInParent();
+        return myBounds.intersects(otherBounds);
     }
 
     abstract Shape getShape();
 }
-
-

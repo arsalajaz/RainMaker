@@ -1,10 +1,9 @@
-package Helper;
+package rainmaker;
 
-import GameObjects.Cloud;
+import rainmaker.gameobjects.Cloud;
 
 public interface CloudsListener {
     void onCloudDestroyed(Cloud cloud);
+
     void onCloudSpawned(Cloud cloud);
 }
-
-

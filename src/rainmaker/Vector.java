@@ -1,5 +1,4 @@
-package Helper;
-
+package rainmaker;
 
 public class Vector {
     private final double x;
@@ -57,7 +56,7 @@ public class Vector {
 
     public String toString() {
         return String.format(
-                "Vector: (x: %.2f, y: %.2f, angle: %.2f, mag: %.2f)",
+                "Temp.Vector: (x: %.2f, y: %.2f, angle: %.2f, mag: %.2f)",
                 x, y, angle, magnitude
         );
     }

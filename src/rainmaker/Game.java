@@ -1,10 +1,5 @@
-package Controllers;
+package rainmaker;
 
-import GameObjects.Cloud;
-import GameObjects.Helicopter;
-import GameObjects.Helipad;
-import Helper.CloudsListener;
-import Temp.GameApp;
 import javafx.animation.AnimationTimer;
 import javafx.geometry.BoundingBox;
 import javafx.geometry.Bounds;
@@ -14,10 +9,11 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Pane;
+import rainmaker.gameobject_collections.*;
+import rainmaker.gameobjects.*;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Vector;
 
 public class Game extends Pane implements CloudsListener {
     private final Bounds gameBounds =
@@ -48,21 +44,24 @@ public class Game extends Pane implements CloudsListener {
 
             @Override
             public void handle(long now) {
-                if (old < 0) { old = now; return; }
+                if (old < 0) {
+                    old = now;
+                    return;
+                }
                 double FrameTime = (now - old) / 1e9;
                 old = now;
 
                 update(FrameTime);
 
                 for (Cloud cloud : clouds) {
-                    if(!cloud.isRaining()) continue;
+                    if (!cloud.isRaining()) continue;
                     for (Pond pond : ponds) {
                         int distance = (int) DistanceLine.getDistance(cloud, pond);
                         double pondDiameter = pond.getRadius() * 2;
                         double maxDistance = pondDiameter * 4;
                         if (distance >= maxDistance) continue;
                         double saturationProp =
-                                (double)cloud.getSaturation()/100;
+                                (double) cloud.getSaturation() / 100;
                         double distanceProp = 1 - (distance / maxDistance);
                         pond.addWater(distanceProp * saturationProp * FrameTime * 2);
                     }
@@ -79,7 +78,7 @@ public class Game extends Pane implements CloudsListener {
         ponds.update(FrameTime);
     }
 
-    void handleCopterCrash() {
+    public void handleCopterCrash() {
         animationTimer.stop();
         String msg = "Game Over! Would you like to play again?";
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, msg,
@@ -95,13 +94,13 @@ public class Game extends Pane implements CloudsListener {
         alert.show();
     }
 
-    void handleCopterLanded() {
-        if(ponds.getAvgWaterLevel() < 80) return;
+    public void handleCopterLanded() {
+        if (ponds.getAvgWaterLevel() < 80) return;
 
         animationTimer.stop();
 
-        double score = (ponds.getAvgWaterLevel()/100) * (double)helicopter.getFuel();
-        String msg = "You Win! Your score is " + (int)score + ". " +
+        double score = (ponds.getAvgWaterLevel() / 100) * (double) helicopter.getFuel();
+        String msg = "You Win! Your score is " + (int) score + ". " +
                 "Would you like to play again?";
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, msg,
                 ButtonType.YES, ButtonType.NO);
@@ -118,6 +117,7 @@ public class Game extends Pane implements CloudsListener {
 
     private void init() {
         getChildren().clear();
+        Helicopter.resetSound();
 
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
 
@@ -138,10 +138,12 @@ public class Game extends Pane implements CloudsListener {
         distanceLines = new DistanceLinesPane();
 
         boundingBoxes.addAll(helicopter, helipad);
-        for (Pond pond : ponds) { boundingBoxes.add(pond); }
+        for (Pond pond : ponds) {
+            boundingBoxes.add(pond);
+        }
         for (Cloud cloud : clouds) {
             boundingBoxes.add(cloud);
-            for(Pond pond : ponds) {
+            for (Pond pond : ponds) {
                 distanceLines.add(cloud, pond);
             }
         }
@@ -150,6 +152,7 @@ public class Game extends Pane implements CloudsListener {
         getChildren().addAll(background, helipad, ponds, clouds, helicopter);
         getChildren().addAll(boundingBoxes, distanceLines);
     }
+
     public void handleKeyPressed(KeyEvent event) {
         keysDown.add(event.getCode());
 
@@ -181,7 +184,9 @@ public class Game extends Pane implements CloudsListener {
         keysDown.remove(event.getCode());
     }
 
-    private boolean isKeyDown(KeyCode k) { return keysDown.contains(k); }
+    private boolean isKeyDown(KeyCode k) {
+        return keysDown.contains(k);
+    }
 
     @Override
     public void onCloudDestroyed(Cloud cloud) {
@@ -192,10 +197,8 @@ public class Game extends Pane implements CloudsListener {
     @Override
     public void onCloudSpawned(Cloud cloud) {
         boundingBoxes.add(cloud);
-        for(Pond pond : ponds) {
+        for (Pond pond : ponds) {
             distanceLines.add(cloud, pond);
         }
     }
 }
-
-

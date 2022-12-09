@@ -1,4 +1,4 @@
-package GameObjects;
+package rainmaker.gameobjects;
 
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
@@ -38,5 +38,3 @@ public class Helipad extends GameObject {
         return pad;
     }
 }
-
-

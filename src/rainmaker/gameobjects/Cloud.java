@@ -1,14 +1,12 @@
-package GameObjects;
+package rainmaker.gameobjects;
 
-import Helper.BezierOval;
-import Helper.RandomGenerator;
-import Helper.Vector;
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Shape;
-
-
+import rainmaker.*;
+import rainmaker.services.BezierOval;
+import rainmaker.services.RandomGenerator;
 
 enum CloudState {
     SPAWNED, ALIVE, DEAD
@@ -23,15 +21,14 @@ public class Cloud extends GameObject implements Updatable {
     private Vector position;
     private Vector velocity;
     private final Circle cloud;
-    private final Shape cloudShape;
+    private final BezierOval cloudShape;
     private final GameText percentText;
     private int saturation = 0;
     private double speedOffset = RandomGenerator.getRandomDouble(40, 70);
 
     public Cloud(Point2D initPosition, Point2D shapeSize) {
         cloud = new Circle(20, Color.rgb(255, 255, 255));
-        cloudShape =
-                new BezierOval(shapeSize.getX(), shapeSize.getY()).getShape();
+        cloudShape = new BezierOval(shapeSize.getX(), shapeSize.getY());
         cloudShape.setFill(Color.rgb(255, 255, 255));
         translate(initPosition.getX(), initPosition.getY());
 
@@ -54,7 +51,7 @@ public class Cloud extends GameObject implements Updatable {
     }
 
     public void rain() {
-        if(saturation <= 0) return;
+        if (saturation <= 0) return;
         saturation--;
     }
 
@@ -65,12 +62,12 @@ public class Cloud extends GameObject implements Updatable {
 
     @Override
     Shape getShape() {
-        return cloudShape;
+        return null;
     }
 
     @Override
     public void update(double FrameTime) {
-        if(isDead()) return;
+        if (isDead()) return;
 
         velocity = new Vector(WIND_SPEED * FrameTime * speedOffset,
                 Math.toRadians(WIND_DIRECTION), true);
@@ -78,8 +75,7 @@ public class Cloud extends GameObject implements Updatable {
 
         if (state != CloudState.ALIVE && isWithinBounds()) {
             state = CloudState.ALIVE;
-        }
-        else if (shouldDie()) {
+        } else if (shouldDie()) {
             state = CloudState.DEAD;
         }
 
@@ -106,7 +102,7 @@ public class Cloud extends GameObject implements Updatable {
     private boolean shouldDie() {
         double cloudWidth = cloudShape.getLayoutBounds().getWidth();
         double cloudHeight = cloudShape.getLayoutBounds().getHeight();
-        return position.getX() < -cloudWidth/2 && velocity.getX() < 0 ||
+        return position.getX() < -cloudWidth / 2 && velocity.getX() < 0 ||
                 position.getX() > GameApp.GAME_WIDTH + cloudWidth / 2 && velocity.getX() > 0 ||
                 position.getY() < -cloudHeight / 2 && velocity.getY() < 0 ||
                 position.getY() > GameApp.GAME_HEIGHT + cloudHeight / 2 && velocity.getY() > 0;
@@ -116,8 +112,8 @@ public class Cloud extends GameObject implements Updatable {
         double radiusX = RandomGenerator.getRandomDouble(50, 60);
         double radiusY = RandomGenerator.getRandomDouble(30, 40);
         double x = onScreen ? RandomGenerator.getRandomDouble(radiusX,
-                800-radiusX) : -radiusX-10;
-        double y = RandomGenerator.getRandomDouble(radiusY, 800-radiusY);
+                800 - radiusX) : -radiusX - 10;
+        double y = RandomGenerator.getRandomDouble(radiusY, 800 - radiusY);
         Point2D position = new Point2D(x, y);
         return new Cloud(position, new Point2D(radiusX, radiusY));
     }
@@ -126,6 +122,3 @@ public class Cloud extends GameObject implements Updatable {
         return state == CloudState.DEAD;
     }
 }
-
-
-

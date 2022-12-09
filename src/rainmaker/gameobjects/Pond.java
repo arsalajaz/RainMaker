@@ -1,10 +1,12 @@
-package GameObjects;
+package rainmaker.gameobjects;
 
-import Helper.RandomGenerator;
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Shape;
+import rainmaker.GameApp;
+import rainmaker.services.RandomGenerator;
+import rainmaker.Updatable;
 
 public class Pond extends GameObject implements Updatable {
     private final GameText waterLevelText = new GameText();
@@ -27,13 +29,13 @@ public class Pond extends GameObject implements Updatable {
     }
 
     public static Pond generatePond() {
-        int waterLevel = RandomGenerator.getRandomInt(10,30);
+        int waterLevel = RandomGenerator.getRandomInt(10, 30);
         int initialArea = waterLevel * 100;
         double radius = getRadius(initialArea);
         double x = RandomGenerator.getRandomDouble(radius,
-                GameApp.GAME_WIDTH-radius);
+                GameApp.GAME_WIDTH - radius);
         double y = RandomGenerator.getRandomDouble(radius,
-                GameApp.GAME_WIDTH-radius);
+                GameApp.GAME_WIDTH - radius);
         return new Pond(new Point2D(x, y), waterLevel, initialArea);
     }
 
@@ -46,7 +48,7 @@ public class Pond extends GameObject implements Updatable {
     }
 
     public void addWater(double water) {
-        pondArea += 100*water;
+        pondArea += 100 * water;
         waterLevel += water;
     }
 
@@ -63,7 +65,7 @@ public class Pond extends GameObject implements Updatable {
     public void update(double FrameTime) {
         pondShape.setRadius(getRadius());
 
-        waterLevelText.setText(String.valueOf((int)waterLevel));
+        waterLevelText.setText(String.valueOf((int) waterLevel));
         waterLevelText.setTranslateX(-waterLevelText.getLayoutBounds()
                 .getWidth() / 2);
         waterLevelText.setTranslateY(waterLevelText.getLayoutBounds()
@@ -71,5 +73,3 @@ public class Pond extends GameObject implements Updatable {
 
     }
 }
-
-
