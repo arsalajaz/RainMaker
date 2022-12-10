@@ -3,14 +3,14 @@ package rainmaker.services;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.*;
-import rainmaker.services.RandomGenerator;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Ellipse;
+import javafx.scene.shape.QuadCurve;
+import javafx.scene.shape.Shape;
 
 import java.util.ArrayList;
 
 public class BezierOval extends Group {
-    private double radiusX;
-    private double radiusY;
     private Shape shape;
     Ellipse oval;
     ArrayList<Point2D> randPointsOnOval = new ArrayList<>();
@@ -21,14 +21,11 @@ public class BezierOval extends Group {
         oval = new Ellipse(radiusX, radiusY);
         oval.setFill(Color.WHITE);
 
-        this.radiusX = radiusX;
-        this.radiusY = radiusY;
-
         createShape();
     }
 
     private void createShape() {
-        int startAngle = 0;
+        int startAngle = RandomGenerator.getRandomInt(0, 360);
         int offsetAngle = RandomGenerator.getRandomInt(0, 100);
         int angle = startAngle;
         while (angle <= 360 + startAngle + offsetAngle) {
@@ -37,8 +34,8 @@ public class BezierOval extends Group {
                 currentAngle = 360 + startAngle + offsetAngle;
             }
 
-            double x = radiusX * Math.sin(Math.toRadians(currentAngle));
-            double y = radiusY * Math.cos(Math.toRadians(currentAngle));
+            double x = oval.getRadiusX() * Math.sin(Math.toRadians(currentAngle));
+            double y = oval.getRadiusY() * Math.cos(Math.toRadians(currentAngle));
 
             randPointsOnOval.add(new Point2D(x, y));
             angles.add(currentAngle);
@@ -73,8 +70,6 @@ public class BezierOval extends Group {
 
             curve.setControlX(controlX);
             curve.setControlY(controlY);
-            curve.setStroke(Color.BLACK);
-            curve.setStrokeWidth(1);
             quadCurves.add(curve);
         }
 
@@ -96,14 +91,12 @@ public class BezierOval extends Group {
     }
 
     private Shape generateShape() {
-        //combine all quad curves into one path
-        Path path = new Path();
-        path.getElements().add(new MoveTo(randPointsOnOval.get(0).getX(), randPointsOnOval.get(0).getY()));
+        //combine all quad curves into one shape
+        Shape shape = oval;
         for (QuadCurve curve : quadCurves) {
-            path.getElements().add(new QuadCurveTo(curve.getControlX(), curve.getControlY(), curve.getEndX(), curve.getEndY()));
+            shape = Shape.union(shape, curve);
         }
-        //path.getElements().add(new ClosePath());
-        return path;
+        return shape;
     }
 
 

@@ -2,9 +2,10 @@ package rainmaker.gameobjects;
 
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
 import javafx.scene.shape.Shape;
-import rainmaker.*;
+import rainmaker.GameApp;
+import rainmaker.Updatable;
+import rainmaker.Vector;
 import rainmaker.services.BezierOval;
 import rainmaker.services.RandomGenerator;
 
@@ -13,29 +14,29 @@ enum CloudState {
 }
 
 public class Cloud extends GameObject implements Updatable {
-    private final double MIN_RADIUS = 40;
-    private final double MAX_RADIUS = 70;
     private static final double WIND_SPEED = 0.4;
     private static final double WIND_DIRECTION = 0;
     private CloudState state = CloudState.SPAWNED;
     private Vector position;
     private Vector velocity;
-    private final Circle cloud;
     private final BezierOval cloudShape;
     private final GameText percentText;
     private int saturation = 0;
     private double speedOffset = RandomGenerator.getRandomDouble(40, 70);
 
     public Cloud(Point2D initPosition, Point2D shapeSize) {
-        cloud = new Circle(20, Color.rgb(255, 255, 255));
         cloudShape = new BezierOval(shapeSize.getX(), shapeSize.getY());
         cloudShape.setFill(Color.rgb(255, 255, 255));
-        translate(initPosition.getX(), initPosition.getY());
+        cloudShape.setStroke(Color.BLACK);
+        cloudShape.setStrokeWidth(1);
 
         percentText = new GameText();
         percentText.setFill(Color.BLUE);
+
         getChildren().addAll(cloudShape, percentText);
         this.position = new Vector(initPosition.getX(), initPosition.getY());
+
+        translate(initPosition.getX(), initPosition.getY());
     }
 
     public boolean isRaining() {
