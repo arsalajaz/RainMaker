@@ -1,4 +1,4 @@
-package rainmaker;
+package rainmaker.services;
 
 public class Vector {
     private final double x;

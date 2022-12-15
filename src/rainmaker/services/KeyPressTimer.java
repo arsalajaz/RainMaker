@@ -1,7 +1,9 @@
 package rainmaker.services;
 
-import javafx.animation.AnimationTimer;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.scene.input.KeyCode;
+import javafx.util.Duration;
 
 /**
  * A timer that fires an event when a key is pressed and held down for a
@@ -11,27 +13,30 @@ import javafx.scene.input.KeyCode;
  * feel consistent across different computers.
  */
 public class KeyPressTimer {
+
+    private Timeline timeline;
     private KeyCode key;
     private boolean isPressed;
-    private long lastKeyPressTime = 0;
-    private long keyPressDelay = 0;
     private boolean justPressed = false;
     Runnable keyPressAction;
 
     public KeyPressTimer(KeyCode key, long keyPressDelay) {
-        this.keyPressDelay = keyPressDelay;
+        timeline = new Timeline(new KeyFrame(Duration.millis(keyPressDelay),
+                event -> {
+            if ((isPressed && keyPressAction != null) || justPressed) {
+                keyPressAction.run();
+                justPressed = false;
+            }
+        }));
+
+        timeline.setCycleCount(Timeline.INDEFINITE);
+        timeline.playFromStart();
+
         this.key = key;
 
         isPressed = false;
         justPressed = false;
 
-        AnimationTimer timer = new AnimationTimer() {
-            @Override
-            public void handle(long now) {
-                update();
-            }
-        };
-        timer.start();
     }
 
     public KeyCode getKey() {
@@ -47,23 +52,12 @@ public class KeyPressTimer {
     public void keyPressed() {
         if(isPressed) return;
 
-        lastKeyPressTime = System.currentTimeMillis();
         isPressed = true;
         justPressed = true;
     }
 
     public void setKeyPressAction(Runnable keyPressAction) {
         this.keyPressAction = keyPressAction;
-    }
-
-    private void update() {
-
-        // if the key is pressed and the key press delay has passed, run the key press action
-        if ((isPressed && System.currentTimeMillis() - lastKeyPressTime > keyPressDelay) || justPressed) {
-            keyPressAction.run();
-            lastKeyPressTime = System.currentTimeMillis();
-            justPressed = false;
-        }
     }
 }
 

@@ -6,52 +6,43 @@ import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Pane;
 import rainmaker.gameobject_collections.BoundingBoxPane;
 import rainmaker.gameobject_collections.Clouds;
 import rainmaker.gameobject_collections.DistanceLinesPane;
 import rainmaker.gameobject_collections.Ponds;
 import rainmaker.gameobjects.*;
-import rainmaker.services.KeyPressTimer;
-import rainmaker.services.TimedKeysCollection;
+import rainmaker.services.Vector;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 
 public class Game extends Pane implements CloudsListener {
+    public static final int GAME_WIDTH = 800;
+    public static final int GAME_HEIGHT = 800;
     private final Bounds gameBounds =
-            new BoundingBox(0, 0, GameApp.GAME_WIDTH, GameApp.GAME_HEIGHT);
+            new BoundingBox(0, 0, GAME_WIDTH, GAME_HEIGHT);
     private final Vector COPTER_INITIAL_POS =
             new Vector(gameBounds.getWidth() / 2, 100);
     private final Point2D PAD_INITIAL_POSITION =
             new Point2D(gameBounds.getHeight() / 2, 100);
-    private static final double PAD_RADIUS = GameApp.GAME_WIDTH / 14;
-    private final Runnable stageClose;
+    private static final double PAD_RADIUS = GAME_WIDTH / 14;
     private final AnimationTimer animationTimer;
-    HashSet<KeyCode> keysDown = new HashSet<>();
-
     private final Pane groundObjects = new Pane();
     private final Pane airObjects = new Pane();
     private Helicopter helicopter;
     private Helipad helipad;
     private Clouds clouds;
     private Ponds ponds;
-
-    private TimedKeysCollection timedKeysCollection = new TimedKeysCollection();
+    Runnable onCloseRequest;
     private BoundingBoxPane boundingBoxes;
     private DistanceLinesPane distanceLines;
 
-    public Game(Runnable stageClose) {
+    public Game() {
         setScaleY(-1);
-        this.stageClose = stageClose;
-        setupHelicopterKeyTimers();
         init();
 
         animationTimer = new AnimationTimer() {
             double old = -1;
-
             @Override
             public void handle(long now) {
                 if (old < 0) {
@@ -66,6 +57,34 @@ public class Game extends Pane implements CloudsListener {
         };
 
         animationTimer.start();
+    }
+
+    public void speedUpHelicopter() {
+        helicopter.speedUp();
+    }
+
+    public void speedDownHelicopter() {
+        helicopter.speedDown();
+    }
+
+    public void turnLeftHelicopter() {
+        helicopter.turnLeft();
+    }
+
+    public void turnRightHelicopter() {
+        helicopter.turnRight();
+    }
+
+    public void toggleBoundingBoxes() {
+        boundingBoxes.toggleVisibility();
+    }
+
+    public void toggleHelicopterIgnition() {
+        helicopter.toggleIgnition();
+    }
+
+    public void toggleDistanceLines() {
+        distanceLines.toggleVisibility();
     }
 
 
@@ -114,7 +133,7 @@ public class Game extends Pane implements CloudsListener {
                 init();
                 animationTimer.start();
             } else {
-                stageClose.run();
+                if(onCloseRequest != null) onCloseRequest.run();
             }
         });
         alert.show();
@@ -140,13 +159,13 @@ public class Game extends Pane implements CloudsListener {
                 init();
                 animationTimer.start();
             } else {
-                stageClose.run();
+                if(onCloseRequest != null) onCloseRequest.run();
             }
         });
         alert.show();
     }
 
-    private void init() {
+    public void init() {
         getChildren().clear();
         groundObjects.getChildren().clear();
         airObjects.getChildren().clear();
@@ -168,8 +187,8 @@ public class Game extends Pane implements CloudsListener {
         pondObstacles.add(helipad.getBoundsInParent());
         ponds = new Ponds(gameBounds, pondObstacles);
 
-        ImageBackground background = new ImageBackground(GameApp.GAME_WIDTH,
-                GameApp.GAME_HEIGHT);
+        ImageBackground background = new ImageBackground(GAME_WIDTH,
+                GAME_HEIGHT);
 
         boundingBoxes = new BoundingBoxPane();
         distanceLines = new DistanceLinesPane();
@@ -193,48 +212,12 @@ public class Game extends Pane implements CloudsListener {
         getChildren().addAll(boundingBoxes, distanceLines);
     }
 
-    public void handleKeyPressed(KeyEvent event) {
-        timedKeysCollection.keyPressed(event.getCode());
-
-        if (event.getCode() == KeyCode.I) helicopter.toggleIgnition();
-        if (event.getCode() == KeyCode.B) boundingBoxes.toggleVisibility();
-        if (event.getCode() == KeyCode.D) distanceLines.toggleVisibility();
-        if (event.getCode() == KeyCode.R) init();
-    }
-
-    private void setupHelicopterKeyTimers() {
-        KeyPressTimer upKeyTimer = new KeyPressTimer(KeyCode.UP, 50);
-        KeyPressTimer downKeyTimer = new KeyPressTimer(KeyCode.DOWN, 50);
-        KeyPressTimer leftKeyTimer = new KeyPressTimer(KeyCode.LEFT, 10);
-        KeyPressTimer rightKeyTimer = new KeyPressTimer(KeyCode.RIGHT, 10);
-        KeyPressTimer spaceKeyTimer = new KeyPressTimer(KeyCode.SPACE, 80);
-
-        upKeyTimer.setKeyPressAction(() -> helicopter.speedUp());
-        downKeyTimer.setKeyPressAction(() -> helicopter.speedDown());
-        leftKeyTimer.setKeyPressAction(() -> helicopter.turnLeft());
-        rightKeyTimer.setKeyPressAction(() -> helicopter.turnRight());
-        spaceKeyTimer.setKeyPressAction(() -> seedClouds());
-
-        timedKeysCollection.addAll(upKeyTimer, downKeyTimer, leftKeyTimer,
-                rightKeyTimer, spaceKeyTimer);
-    }
-
-    private void seedClouds() {
+    public void seedClouds() {
         for (Cloud cloud : clouds) {
             if (helicopter.intersects(cloud)) {
                 helicopter.seedCloud(cloud);
             }
         }
-    }
-
-    public void handleKeyReleased(KeyEvent event) {
-        keysDown.remove(event.getCode());
-
-        timedKeysCollection.keyReleased(event.getCode());
-    }
-
-    private boolean isKeyDown(KeyCode k) {
-        return keysDown.contains(k);
     }
 
     @Override
@@ -249,5 +232,12 @@ public class Game extends Pane implements CloudsListener {
         for (Pond pond : ponds) {
             distanceLines.add(cloud, pond);
         }
+    }
+
+    /**
+     * The Runnable will be executed when the player chooses to exit the game
+     */
+    public void setOnCloseRequest(Runnable onCloseRequest) {
+        this.onCloseRequest = onCloseRequest;
     }
 }

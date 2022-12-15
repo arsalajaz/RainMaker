@@ -3,7 +3,7 @@ package rainmaker.gameobjects;
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import rainmaker.GameApp;
+import rainmaker.Game;
 import rainmaker.Updatable;
 import rainmaker.services.RandomGenerator;
 
@@ -35,9 +35,9 @@ public class Pond extends GameObject implements Updatable {
         int initialArea = waterLevel * 100;
         double radius = getRadius(initialArea);
         double x = RandomGenerator.getRandomDouble(radius,
-                GameApp.GAME_WIDTH - radius);
+                Game.GAME_WIDTH - radius);
         double y = RandomGenerator.getRandomDouble(radius,
-                GameApp.GAME_WIDTH - radius);
+                Game.GAME_WIDTH - radius);
         return new Pond(new Point2D(x, y), waterLevel, initialArea);
     }
 

@@ -4,11 +4,11 @@ import javafx.geometry.Point2D;
 import javafx.scene.Node;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Shape;
-import rainmaker.GameApp;
+import rainmaker.Game;
 import rainmaker.Updatable;
-import rainmaker.Vector;
 import rainmaker.services.BezierOval;
 import rainmaker.services.RandomGenerator;
+import rainmaker.services.Vector;
 
 enum CloudState {
     SPAWNED, ALIVE, DEAD
@@ -93,18 +93,18 @@ public class Cloud extends GameObject implements Updatable {
         double cloudWidth = cloudShape.getLayoutBounds().getWidth();
         double cloudHeight = cloudShape.getLayoutBounds().getHeight();
         return position.getX() > cloudWidth / 2 &&
-                position.getX() < GameApp.GAME_WIDTH - cloudWidth / 2 &&
+                position.getX() < Game.GAME_WIDTH - cloudWidth / 2 &&
                 position.getY() > cloudHeight / 2 &&
-                position.getY() < GameApp.GAME_HEIGHT - cloudHeight / 2;
+                position.getY() < Game.GAME_HEIGHT - cloudHeight / 2;
     }
 
     private boolean shouldDie() {
         double cloudWidth = cloudShape.getLayoutBounds().getWidth();
         double cloudHeight = cloudShape.getLayoutBounds().getHeight();
         return position.getX() < -cloudWidth / 2 && velocity.getX() < 0 ||
-                position.getX() > GameApp.GAME_WIDTH + cloudWidth / 2 && velocity.getX() > 0 ||
+                position.getX() > Game.GAME_WIDTH + cloudWidth / 2 && velocity.getX() > 0 ||
                 position.getY() < -cloudHeight / 2 && velocity.getY() < 0 ||
-                position.getY() > GameApp.GAME_HEIGHT + cloudHeight / 2 && velocity.getY() > 0;
+                position.getY() > Game.GAME_HEIGHT + cloudHeight / 2 && velocity.getY() > 0;
     }
 
     public static Cloud createRandomCloud(boolean onScreen) {
