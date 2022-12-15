@@ -1,16 +1,22 @@
 package rainmaker.gameobjects;
 
-import javafx.geometry.Bounds;
 import javafx.scene.Group;
 import javafx.scene.shape.Shape;
 import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Scale;
 import javafx.scene.transform.Translate;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public abstract class GameObject extends Group {
     protected Translate myTranslation;
     protected Rotate myRotation;
     protected Scale myScale;
+
+    // List of shapes that make up this object, used for accurate collision
+    // detection
+    protected final List<Shape> shapes = new ArrayList<>();
 
     public GameObject() {
         myTranslation = new Translate();
@@ -36,11 +42,14 @@ public abstract class GameObject extends Group {
         myTranslation.setY(ty);
     }
 
-    public boolean interest(GameObject object) {
-        Bounds myBounds = this.getBoundsInParent();
-        Bounds otherBounds = object.getBoundsInParent();
-        return myBounds.intersects(otherBounds);
+    public boolean intersects(GameObject object) {
+        for (Shape shape : shapes) {
+            for (Shape otherShape : object.shapes) {
+                if (!Shape.intersect(shape, otherShape).getBoundsInLocal().isEmpty()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
-
-    abstract Shape getShape();
 }

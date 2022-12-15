@@ -3,88 +3,88 @@ package rainmaker.gameobjects;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Shape;
 import rainmaker.Updatable;
 import rainmaker.Vector;
 
 import java.io.File;
 
 public class Helicopter extends GameObject implements Updatable {
-    private static final Media ENGINE_SOUND = new Media(
+    private static final Media ENGINE_SOUND_MEDIA = new Media(
             new File("src/resources/helicopter_audio.wav").toURI().toString());
-    private static final MediaPlayer soundPlayer =
-            new MediaPlayer(ENGINE_SOUND);
-    private static final double MAX_SPEED = 10;
-    private static final double MIN_SPEED = -2;
-    private static final double ACCELERATION = 0.1;
-    private final HelicopterState offState;
-    private final HelicopterState startingState;
-    private final HelicopterState readyState;
-    private final HelicopterState stoppingState;
+    public static final MediaPlayer ENGINE_SOUND =
+            new MediaPlayer(ENGINE_SOUND_MEDIA);
+    public static final double MAX_SPEED = 10;
+    public static final double MIN_SPEED = -2;
+    public static final double ACCELERATION = 0.1;
+    public final HelicopterState OFF_STATE = new HelicopterOffState(this);
+    public final HelicopterState STARTING_STATE =
+            new HelicopterStartingState(this);
+    public final HelicopterState READY_STATE = new HelicopterReadyState(this);
+    public final HelicopterState STOPPING_STATE =
+            new HelicopterStoppingState(this);
+
+    private HelicopterState currState;
     private final GameText fuelText;
     private final GameText stateText;
     private final HeloBody heloBody;
     private final HeloBlade heloBlade;
-    private HelicopterState currState;
     private double heading = 0;
     private double speed = 0;
     private Vector position;
-    private int water;
     private double fuel;
     private Runnable onCrashAction;
     private Helipad helipad;
     private Runnable onLandedAction;
+    private Runnable onFlyingAction;
 
-    public Helicopter(int initialWater, Vector initialPosition, int initialFuel) {
-        water = initialWater;
+    public Helicopter(Vector initialPosition, int initialFuel) {
         fuel = initialFuel;
 
         heloBody = new HeloBody();
         heloBlade = new HeloBlade();
-
         fuelText = new GameText();
         stateText = new GameText();
 
         fuelText.setFill(Color.RED);
         stateText.setFill(Color.RED);
 
-        soundPlayer.setCycleCount(MediaPlayer.INDEFINITE);
-        soundPlayer.setVolume(0);
-        soundPlayer.play();
+        ENGINE_SOUND.setCycleCount(MediaPlayer.INDEFINITE);
+        ENGINE_SOUND.setVolume(0);
+        ENGINE_SOUND.play();
 
         getChildren().addAll(heloBody, heloBlade, fuelText, stateText);
 
         position = initialPosition;
 
-        offState = new HelicopterOffState(this);
-        startingState = new HelicopterStartingState(this);
-        readyState = new HelicopterReadyState(this);
-        stoppingState = new HelicopterStoppingState(this);
+        currState = OFF_STATE;
 
-        currState = offState;
+        heloBlade.setOnMaxRotationalSpeed(() -> {
+            setState(READY_STATE);
+            if(onFlyingAction != null) {
+                onFlyingAction.run();
+            }
+        });
+        heloBlade.setOnStoppedRotating(() -> {
+            setState(OFF_STATE);
+            if(onLandedAction != null) {
+                onLandedAction.run();
+            }
+        });
+
+        shapes.add(heloBody);
+        shapes.add(heloBlade);
     }
 
-    public static void resetSound() {
-        soundPlayer.stop();
-        soundPlayer.setVolume(0);
+    public void startSpinningBlades() {
+        heloBlade.startSpinning();
     }
 
-
-    private static double round(double value, int precision) {
-        int scale = (int) Math.pow(10, precision);
-        return (double) Math.round(value * scale) / scale;
+    public void stopSpinningBlades() {
+        heloBlade.stopSpinning();
     }
 
-    public MediaPlayer getSoundPlayer() {
-        return soundPlayer;
-    }
-
-    public void takeOff() {
-        currState.startEngine();
-    }
-
-    public void land() {
-        currState.stopEngine();
+    public void toggleIgnition() {
+        currState.toggleIgnition();
     }
 
     public void speedUp() {
@@ -101,10 +101,6 @@ public class Helicopter extends GameObject implements Updatable {
 
     public void turnRight() {
         currState.turnRight();
-    }
-
-    private double convertDegreesToRadians(double degrees) {
-        return degrees * (Math.PI / 180);
     }
 
     private double getCartesianAngle() {
@@ -124,7 +120,7 @@ public class Helicopter extends GameObject implements Updatable {
     }
 
     private void calculateNewPosition(double frameTime) {
-        double angle = convertDegreesToRadians(getCartesianAngle());
+        double angle = Math.toRadians(getCartesianAngle());
         Vector velocity = new Vector(speed, angle, true)
                 .multiply(frameTime * 30);
 
@@ -138,8 +134,7 @@ public class Helicopter extends GameObject implements Updatable {
         updateLabels();
 
         currState.consumeFuel(frameTime);
-        if (currState != readyState)
-            currState.playSound(soundPlayer, frameTime);
+        currState.playSound();
     }
 
     private void updateLabels() {
@@ -150,6 +145,14 @@ public class Helicopter extends GameObject implements Updatable {
         stateText.setText(currState.toString());
         stateText.setTranslateX(-stateText.getLayoutBounds().getWidth() / 2);
         stateText.setTranslateY(-30 - fuelText.getLayoutBounds().getHeight());
+    }
+
+    public void setOnFlyingAction(Runnable onFlyingAction) {
+        this.onFlyingAction = onFlyingAction;
+    }
+
+    public Runnable getOnFlyingAction() {
+        return onLandedAction;
     }
 
     public void setOnLandedAction(Runnable action) {
@@ -168,27 +171,8 @@ public class Helicopter extends GameObject implements Updatable {
         this.onCrashAction = action;
     }
 
-    public HelicopterState getState() {
-        return currState;
-    }
-
     public void setState(HelicopterState currState) {
         this.currState = currState;
-    }
-
-    @Override
-    Shape getShape() {
-        return heloBody;
-    }
-
-    public void accelerate() {
-        if (speed >= MAX_SPEED) return;
-        speed = round(speed + ACCELERATION, 1);
-    }
-
-    public void decelerate() {
-        if (this.speed <= MIN_SPEED) return;
-        speed = round(speed - ACCELERATION, 1);
     }
 
     public double getFuel() {
@@ -212,19 +196,19 @@ public class Helicopter extends GameObject implements Updatable {
     }
 
     public HelicopterState getOffState() {
-        return offState;
+        return OFF_STATE;
     }
 
     public HelicopterState getStartingState() {
-        return startingState;
+        return STARTING_STATE;
     }
 
     public HelicopterState getReadyState() {
-        return readyState;
+        return READY_STATE;
     }
 
     public HelicopterState getStoppingState() {
-        return stoppingState;
+        return STOPPING_STATE;
     }
 
     public HeloBlade getBlade() {
@@ -245,6 +229,12 @@ public class Helicopter extends GameObject implements Updatable {
         return helipad != null &&
                 helipad.getBoundsInParent().contains(getBoundsInParent());
     }
+
+    public void setSpeed(double speed) {
+        if (speed > MAX_SPEED) return;
+        if (speed < MIN_SPEED) return;
+        this.speed = speed;
+    }
 }
 
 abstract class HelicopterState {
@@ -254,13 +244,11 @@ abstract class HelicopterState {
         this.helicopter = helicopter;
     }
 
-    abstract void startEngine();
-
-    abstract void stopEngine();
-
     abstract void speedUp();
 
     abstract void speedDown();
+
+    abstract void toggleIgnition();
 
     abstract void turnLeft();
 
@@ -270,7 +258,7 @@ abstract class HelicopterState {
 
     abstract void consumeFuel(double rate);
 
-    abstract void playSound(MediaPlayer mediaPlayer, double frameTime);
+    abstract void playSound();
 }
 
 class HelicopterOffState extends HelicopterState {
@@ -279,19 +267,16 @@ class HelicopterOffState extends HelicopterState {
     }
 
     @Override
-    void startEngine() {
-        helicopter.setState(helicopter.getStartingState());
-        helicopter.getState().startEngine();
-    }
-
-    @Override
-    void stopEngine() { /* Do nothing - engine already off */}
-
-    @Override
     void speedUp() { /* Do nothing - helicopter is off */ }
 
     @Override
     void speedDown() { /* Do nothing - helicopter is off */ }
+
+    @Override
+    void toggleIgnition() {
+        helicopter.startSpinningBlades();
+        helicopter.setState(helicopter.getStartingState());
+    }
 
     @Override
     void turnLeft() { /* Do nothing - helicopter is off */ }
@@ -300,18 +285,13 @@ class HelicopterOffState extends HelicopterState {
     void turnRight() { /* Do nothing - helicopter is off */ }
 
     @Override
-    void seedCloud(Cloud cloud) { /* Do nothing - helicopter is off */}
+    void seedCloud(Cloud cloud) { /* Do nothing - helicopter is off */ }
 
     @Override
-    void consumeFuel(double rate) {
-        /* Do nothing - helicopter is off */
-    }
+    void consumeFuel(double rate) { /* Do nothing - helicopter is off */ }
 
     @Override
-    void playSound(MediaPlayer mediaPlayer, double frameTime) {
-        mediaPlayer.setVolume(0);
-    }
-
+    void playSound() { /* Do nothing - helicopter is off */}
 
     public String toString() {
         return "Off";
@@ -325,25 +305,16 @@ class HelicopterStartingState extends HelicopterState {
     }
 
     @Override
-    void startEngine() {
-        helicopter.getBlade().setOnMaxRotationalSpeed(() -> {
-            helicopter.setState(helicopter.getReadyState());
-            System.out.println(helicopter.getFuel());
-        });
-        helicopter.getBlade().startSpinning();
-    }
-
-    @Override
-    void stopEngine() {
-        helicopter.setState(helicopter.getStoppingState());
-        helicopter.getState().stopEngine();
-    }
-
-    @Override
     void speedUp() { /* Do nothing - helicopter is starting */ }
 
     @Override
     void speedDown() { /* Do nothing - helicopter is starting */}
+
+    @Override
+    void toggleIgnition() {
+        helicopter.stopSpinningBlades();
+        helicopter.setState(helicopter.getStoppingState());
+    }
 
     @Override
     void turnLeft() { /* Do nothing - helicopter is starting */}
@@ -360,19 +331,20 @@ class HelicopterStartingState extends HelicopterState {
         helicopter.setFuel((fuel - 10 * rate));
 
         if (helicopter.getFuel() <= 0) {
+            helicopter.stopSpinningBlades();
             helicopter.setState(helicopter.getStoppingState());
-            helicopter.getState().stopEngine();
             helicopter.crash();
         }
 
     }
 
     @Override
-    void playSound(MediaPlayer mediaPlayer, double frameTime) {
-        // insrease volume by the percentage of blade roatation speed to max speed
-        mediaPlayer.setVolume(helicopter.getBlade().getCurrentSpeed() / helicopter.getBlade().MAX_ROTATIONAL_SPEED);
+    void playSound() {
+        Helicopter.ENGINE_SOUND.setVolume(
+                helicopter.getBlade().getCurrentSpeed() /
+                helicopter.getBlade().MAX_ROTATIONAL_SPEED
+        );
     }
-
 
     public String toString() {
         return "Starting";
@@ -385,24 +357,16 @@ class HelicopterStoppingState extends HelicopterState {
     }
 
     @Override
-    void startEngine() {
-        helicopter.setState(helicopter.getStartingState());
-    }
-
-    @Override
-    void stopEngine() {
-        helicopter.getBlade().setOnStoppedRotating(() -> {
-            helicopter.setState(helicopter.getOffState());
-            helicopter.getOnLandedAction().run();
-        });
-        helicopter.getBlade().stopSpinning();
-    }
-
-    @Override
     void speedUp() { /* Do nothing - helicopter is stopping */ }
 
     @Override
     void speedDown() { /* Do nothing - helicopter is stopping */ }
+
+    @Override
+    void toggleIgnition() {
+        helicopter.startSpinningBlades();
+        helicopter.setState(helicopter.getStartingState());
+    }
 
     @Override
     void turnLeft() { /* Do nothing - helicopter is stopping */ }
@@ -422,8 +386,11 @@ class HelicopterStoppingState extends HelicopterState {
      * speed on each call. Should be called on each frame.
      */
     @Override
-    void playSound(MediaPlayer mediaPlayer, double frameTime) {
-        mediaPlayer.setVolume(helicopter.getBlade().getCurrentSpeed() / helicopter.getBlade().MAX_ROTATIONAL_SPEED);
+    void playSound() {
+        Helicopter.ENGINE_SOUND.setVolume(
+                helicopter.getBlade().getCurrentSpeed() /
+                helicopter.getBlade().MAX_ROTATIONAL_SPEED
+        );
     }
 
     public String toString() {
@@ -437,37 +404,36 @@ class HelicopterReadyState extends HelicopterState {
     }
 
     @Override
-    void startEngine() {
-        //do nothing - engine is already running
-    }
-
-    @Override
-    void stopEngine() {
-        if (Math.abs(helicopter.getSpeed()) >= 0.1) return;
-        if (!helicopter.hooveringOverHelipad()) return;
-
-        helicopter.setState(helicopter.getStoppingState());
-        helicopter.getState().stopEngine();
-    }
-
-    @Override
     void speedUp() {
-        helicopter.accelerate();
+        double speed = helicopter.getSpeed();
+        if (speed >= Helicopter.MAX_SPEED) return;
+        helicopter.setSpeed(Vector.round(speed + Helicopter.ACCELERATION, 1));
     }
 
     @Override
     void speedDown() {
-        helicopter.decelerate();
+        double speed = helicopter.getSpeed();
+        if (speed <= Helicopter.MIN_SPEED) return;
+        helicopter.setSpeed(Vector.round(speed - Helicopter.ACCELERATION, 1));
+    }
+
+    @Override
+    void toggleIgnition() {
+        if (Math.abs(helicopter.getSpeed()) >= 0.1) return;
+        if (!helicopter.hooveringOverHelipad()) return;
+
+        helicopter.stopSpinningBlades();
+        helicopter.setState(helicopter.getStoppingState());
     }
 
     @Override
     void turnLeft() {
-        helicopter.setHeading(helicopter.getHeading() - 15);
+        helicopter.setHeading(helicopter.getHeading() - 1);
     }
 
     @Override
     void turnRight() {
-        helicopter.setHeading(helicopter.getHeading() + 15);
+        helicopter.setHeading(helicopter.getHeading() + 1);
     }
 
     @Override
@@ -484,16 +450,14 @@ class HelicopterReadyState extends HelicopterState {
         helicopter.setFuel((fuel - speedConsumption - hoverConsumption));
 
         if (helicopter.getFuel() <= 0) {
+            helicopter.stopSpinningBlades();
             helicopter.setState(helicopter.getStoppingState());
-            helicopter.getState().stopEngine();
             helicopter.crash();
         }
     }
 
     @Override
-    void playSound(MediaPlayer mediaPlayer, double frameTime) {
-        mediaPlayer.setVolume(1.0);
-    }
+    void playSound() {}
 
     public String toString() {
         return "Flying";

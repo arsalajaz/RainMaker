@@ -5,7 +5,6 @@ import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
-import javafx.scene.shape.Shape;
 
 public class Helipad extends GameObject {
     private final double BORDER_OFFSET = 10;
@@ -28,13 +27,10 @@ public class Helipad extends GameObject {
         border.setStrokeWidth(2);
         border.setFill(Color.DARKGRAY);
 
+        shapes.add(pad);
+
         getChildren().addAll(border, pad);
 
         translate(initialPosition.getX(), initialPosition.getY());
-    }
-
-    @Override
-    Shape getShape() {
-        return pad;
     }
 }

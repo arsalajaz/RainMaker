@@ -54,6 +54,11 @@ public class Vector {
         return new Vector(-x, y);
     }
 
+    public static double round(double value, int precision) {
+        int scale = (int) Math.pow(10, precision);
+        return (double) Math.round(value * scale) / scale;
+    }
+
     public String toString() {
         return String.format(
                 "Temp.Vector: (x: %.2f, y: %.2f, angle: %.2f, mag: %.2f)",

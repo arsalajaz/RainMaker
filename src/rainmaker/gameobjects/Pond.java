@@ -3,14 +3,14 @@ package rainmaker.gameobjects;
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import javafx.scene.shape.Shape;
 import rainmaker.GameApp;
-import rainmaker.services.RandomGenerator;
 import rainmaker.Updatable;
+import rainmaker.services.RandomGenerator;
 
 public class Pond extends GameObject implements Updatable {
     private final GameText waterLevelText = new GameText();
     Circle pondShape = new Circle();
+
     private double pondArea;
     private double waterLevel = 0;
 
@@ -26,6 +26,8 @@ public class Pond extends GameObject implements Updatable {
         getChildren().addAll(pondShape, waterLevelText);
         setTranslateX(initialPosition.getX());
         setTranslateY(initialPosition.getY());
+
+        shapes.add(pondShape);
     }
 
     public static Pond generatePond() {
@@ -54,11 +56,6 @@ public class Pond extends GameObject implements Updatable {
 
     public double getCurrentWaterLevel() {
         return waterLevel;
-    }
-
-    @Override
-    Shape getShape() {
-        return pondShape;
     }
 
     @Override

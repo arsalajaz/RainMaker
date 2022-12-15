@@ -1,6 +1,7 @@
 package rainmaker.gameobjects;
 
 import javafx.geometry.Point2D;
+import javafx.scene.Node;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Shape;
 import rainmaker.GameApp;
@@ -37,6 +38,12 @@ public class Cloud extends GameObject implements Updatable {
         this.position = new Vector(initPosition.getX(), initPosition.getY());
 
         translate(initPosition.getX(), initPosition.getY());
+
+        for(Node node : cloudShape.getChildren()) {
+            if(node instanceof Shape) {
+                shapes.add((Shape)node);
+            }
+        }
     }
 
     public boolean isRaining() {
@@ -47,10 +54,6 @@ public class Cloud extends GameObject implements Updatable {
         return saturation;
     }
 
-    public CloudState getState() {
-        return state;
-    }
-
     public void rain() {
         if (saturation <= 0) return;
         saturation--;
@@ -59,11 +62,6 @@ public class Cloud extends GameObject implements Updatable {
     public void saturate() {
         if (saturation >= 100) return;
         saturation++;
-    }
-
-    @Override
-    Shape getShape() {
-        return null;
     }
 
     @Override

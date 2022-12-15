@@ -54,7 +54,7 @@ public class Ponds extends GameObjectPane<Pond> implements Updatable {
 
     private boolean overlapsAnotherPond(Pond pond) {
         for (Pond p : this) {
-            if (p.interest(pond)) {
+            if (p.intersects(pond)) {
                 return true;
             }
         }
