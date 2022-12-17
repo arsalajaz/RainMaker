@@ -6,12 +6,10 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Ellipse;
 import javafx.scene.shape.QuadCurve;
-import javafx.scene.shape.Shape;
 
 import java.util.ArrayList;
 
 public class BezierOval extends Group {
-    private Shape shape;
     Ellipse oval;
     ArrayList<Point2D> randPointsOnOval = new ArrayList<>();
     ArrayList<Integer> angles = new ArrayList<>();
@@ -26,40 +24,42 @@ public class BezierOval extends Group {
 
     private void createShape() {
         int startAngle = RandomGenerator.getRandomInt(0, 360);
-        int offsetAngle = RandomGenerator.getRandomInt(0, 100);
+        int offsetAngle = 72;
         int angle = startAngle;
+        int prevAngle = -1;
+        Point2D prevPoint = null;
         while (angle <= 360 + startAngle + offsetAngle) {
-            int currentAngle = angle;
-            if (angle >= 360 + startAngle + offsetAngle) {
-                currentAngle = 360 + startAngle + offsetAngle;
-            }
 
-            double x = oval.getRadiusX() * Math.sin(Math.toRadians(currentAngle));
-            double y = oval.getRadiusY() * Math.cos(Math.toRadians(currentAngle));
+            double x = oval.getRadiusX() * Math.sin(Math.toRadians(angle));
+            double y = oval.getRadiusY() * Math.cos(Math.toRadians(angle));
+
+            Point2D currentPoint = new Point2D(x, y);
 
             randPointsOnOval.add(new Point2D(x, y));
-            angles.add(currentAngle);
-            angle += 72;
+            angles.add(angle);
 
+            angle += RandomGenerator.getRandomInt(60,72);
 
-            if (randPointsOnOval.size() == 1) continue;
+            if (prevPoint == null) {
+                prevPoint = currentPoint;
+                prevAngle = angle;
+                continue;
+            }
 
-            Point2D curr = randPointsOnOval.get(randPointsOnOval.size() - 1);
-            Point2D prev = randPointsOnOval.get(randPointsOnOval.size() - 2);
 
             int angle1 = angles.get(angles.size() - 1);
             int angle2 = angles.get(angles.size() - 2);
 
             QuadCurve curve = new QuadCurve();
-            curve.setStartX(prev.getX());
-            curve.setStartY(prev.getY());
-            curve.setEndX(curr.getX());
-            curve.setEndY(curr.getY());
+            curve.setStartX(prevPoint.getX());
+            curve.setStartY(prevPoint.getY());
+            curve.setEndX(currentPoint.getX());
+            curve.setEndY(currentPoint.getY());
 
             double angleControlInRadians =
                     Math.toRadians((angle1 + angle2) / 2);
 
-            int offset = RandomGenerator.getRandomInt(5, 25);
+            int offset = RandomGenerator.getRandomInt(10, 25);
 
             // x = (a + alpha) * cos(theta)
             double controlX =
@@ -68,35 +68,37 @@ public class BezierOval extends Group {
             double controlY =
                     (oval.getRadiusY() + offset) * Math.cos(angleControlInRadians);
 
+            prevPoint = currentPoint;
+            prevAngle = angle;
+
             curve.setControlX(controlX);
             curve.setControlY(controlY);
             quadCurves.add(curve);
         }
 
-        this.shape = generateShape();
-        getChildren().addAll(this.shape);
+        //this.shape = generateShape();
+        getChildren().add(oval);
+        getChildren().addAll(quadCurves);
 
     }
 
     public void setFill(Color color) {
-        shape.setFill(color);
+        for (QuadCurve curve : quadCurves) {
+            curve.setFill(color);
+        }
+        oval.setFill(color);
     }
 
     public void setStroke(Color color) {
-        shape.setStroke(color);
+        for (QuadCurve curve : quadCurves) {
+            curve.setStroke(color);
+        }
     }
 
     public void setStrokeWidth(double width) {
-        shape.setStrokeWidth(width);
-    }
-
-    private Shape generateShape() {
-        //combine all quad curves into one shape
-        Shape shape = oval;
         for (QuadCurve curve : quadCurves) {
-            shape = Shape.union(shape, curve);
+            curve.setStrokeWidth(width);
         }
-        return shape;
     }
 
 

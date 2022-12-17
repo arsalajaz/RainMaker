@@ -16,7 +16,7 @@ enum BladeState {
 public class HeloBlade extends Circle {
     public static final double MAX_ROTATIONAL_SPEED = 1000;
     public static final double INITIAL_ROTATION_ANGLE = 45;
-    private static final double ROTATION_ANGLE_INCREMENT = 200;
+    private static final double ROTATION_ANGLE_INCREMENT = 180;
     private BladeState currState;
     private double rotationalSpeed;
     private Runnable onMaxRotationalSpeed;

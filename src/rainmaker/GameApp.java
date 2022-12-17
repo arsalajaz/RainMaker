@@ -14,7 +14,7 @@ public class GameApp extends Application {
 
     @Override
     public void start(Stage stage) throws Exception {
-        game = new Game();
+        game = Game.getInstance();
         game.setOnCloseRequest(stage::close);
 
         setupHelicopterKeyTimers();
@@ -27,6 +27,7 @@ public class GameApp extends Application {
                 case B: game.toggleBoundingBoxes();         break;
                 case D: game.toggleDistanceLines();         break;
                 case I: game.toggleHelicopterIgnition();    break;
+                case C: System.gc();                        break;
 
                 default: timedKeysCollection.keyPressed(event.getCode()); break;
             }

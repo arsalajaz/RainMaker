@@ -17,6 +17,7 @@ enum CloudState {
 public class Cloud extends GameObject implements Updatable {
     private static final double WIND_SPEED = 0.4;
     private static final double WIND_DIRECTION = 0;
+    private static final double SATURATION_LOSS_DELAY_IN_SECS = 1;
     private CloudState state = CloudState.SPAWNED;
     private Vector position;
     private Vector velocity;
@@ -54,7 +55,7 @@ public class Cloud extends GameObject implements Updatable {
         return saturation;
     }
 
-    public void rain() {
+    private void rain() {
         if (saturation <= 0) return;
         saturation--;
     }
@@ -64,9 +65,18 @@ public class Cloud extends GameObject implements Updatable {
         saturation++;
     }
 
+    private double rainTimeElapsed = 0;
     @Override
     public void update(double FrameTime) {
         if (isDead()) return;
+
+        rainTimeElapsed += FrameTime;
+
+        //every second, cloud losses 1% saturation
+        if (rainTimeElapsed >= SATURATION_LOSS_DELAY_IN_SECS) {
+            rainTimeElapsed = 0;
+            rain();
+        }
 
         velocity = new Vector(WIND_SPEED * FrameTime * speedOffset,
                 Math.toRadians(WIND_DIRECTION), true);
@@ -90,8 +100,8 @@ public class Cloud extends GameObject implements Updatable {
     }
 
     private boolean isWithinBounds() {
-        double cloudWidth = cloudShape.getLayoutBounds().getWidth();
-        double cloudHeight = cloudShape.getLayoutBounds().getHeight();
+        double cloudWidth = getLayoutBounds().getWidth();
+        double cloudHeight = getLayoutBounds().getHeight();
         return position.getX() > cloudWidth / 2 &&
                 position.getX() < Game.GAME_WIDTH - cloudWidth / 2 &&
                 position.getY() > cloudHeight / 2 &&
@@ -99,8 +109,8 @@ public class Cloud extends GameObject implements Updatable {
     }
 
     private boolean shouldDie() {
-        double cloudWidth = cloudShape.getLayoutBounds().getWidth();
-        double cloudHeight = cloudShape.getLayoutBounds().getHeight();
+        double cloudWidth = getLayoutBounds().getWidth();
+        double cloudHeight = getLayoutBounds().getHeight();
         return position.getX() < -cloudWidth / 2 && velocity.getX() < 0 ||
                 position.getX() > Game.GAME_WIDTH + cloudWidth / 2 && velocity.getX() > 0 ||
                 position.getY() < -cloudHeight / 2 && velocity.getY() < 0 ||

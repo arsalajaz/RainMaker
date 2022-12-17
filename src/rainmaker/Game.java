@@ -7,16 +7,14 @@ import javafx.geometry.Point2D;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.layout.Pane;
-import rainmaker.gameobject_collections.BoundingBoxPane;
-import rainmaker.gameobject_collections.Clouds;
-import rainmaker.gameobject_collections.DistanceLinesPane;
-import rainmaker.gameobject_collections.Ponds;
+import rainmaker.gameobject_collections.*;
 import rainmaker.gameobjects.*;
 import rainmaker.services.Vector;
 
 import java.util.ArrayList;
 
 public class Game extends Pane implements CloudsListener {
+    private static final Game INSTANCE = new Game();
     public static final int GAME_WIDTH = 800;
     public static final int GAME_HEIGHT = 800;
     private final Bounds gameBounds =
@@ -33,11 +31,12 @@ public class Game extends Pane implements CloudsListener {
     private Helipad helipad;
     private Clouds clouds;
     private Ponds ponds;
+    private Blimps blimps;
     Runnable onCloseRequest;
     private BoundingBoxPane boundingBoxes;
     private DistanceLinesPane distanceLines;
 
-    public Game() {
+    private Game() {
         setScaleY(-1);
         init();
 
@@ -53,10 +52,15 @@ public class Game extends Pane implements CloudsListener {
                 old = now;
 
                 update(FrameTime);
+                blimps.update(FrameTime);
             }
         };
 
         animationTimer.start();
+    }
+
+    public static Game getInstance() {
+        return INSTANCE;
     }
 
     public void speedUpHelicopter() {
@@ -87,7 +91,6 @@ public class Game extends Pane implements CloudsListener {
         distanceLines.toggleVisibility();
     }
 
-
     private void update(double frameTime) {
         helicopter.update(frameTime);
         ponds.update(frameTime);
@@ -108,6 +111,16 @@ public class Game extends Pane implements CloudsListener {
                 pond.addWater(distanceProp * saturationProp * frameTime * 2);
             }
         }
+    }
+
+    public void handleBlimpAdded(Blimp blimp) {
+        //draw distance lines between blimp and helicopter
+        distanceLines.add(helicopter, blimp);
+    }
+
+    public void handleBlimpRemoved(Blimp blimp) {
+        //remove distance lines between blimp and helicopter
+        distanceLines.removeIfInvolves(blimp);
     }
 
     public void handleCopterFlying() {
@@ -204,8 +217,10 @@ public class Game extends Pane implements CloudsListener {
             }
         }
 
+        blimps = new Blimps();
+
         groundObjects.getChildren().addAll(background, ponds, helipad, helicopter);
-        airObjects.getChildren().addAll(clouds);
+        airObjects.getChildren().addAll(clouds, blimps);
 
 
         getChildren().addAll(background, groundObjects, airObjects);

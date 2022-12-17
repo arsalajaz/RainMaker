@@ -1,12 +1,15 @@
 package rainmaker.gameobject_collections;
 
 import javafx.animation.AnimationTimer;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 import rainmaker.CloudsListener;
-import rainmaker.services.CoinSide;
-import rainmaker.services.RandomGenerator;
 import rainmaker.Updatable;
 import rainmaker.gameobjects.Cloud;
+import rainmaker.services.CoinSide;
+import rainmaker.services.RandomGenerator;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,9 +17,17 @@ import java.util.List;
 public class Clouds extends GameObjectPane<Cloud> implements Updatable {
     private static final int MAX_CLOUDS = 5;
     private static final int MIN_CLOUDS = 2;
+
+    private static final Media RAIN_SOUND_PLAYER =
+            new Media(new File("src/resources/rain.wav").toURI().toString());
+    private static final MediaPlayer RAIN_SOUND =
+            new MediaPlayer(RAIN_SOUND_PLAYER);
     private List<CloudsListener> listeners = new ArrayList<>();
 
     public Clouds() {
+        RAIN_SOUND.setCycleCount(MediaPlayer.INDEFINITE);
+        RAIN_SOUND.setVolume(0);
+        RAIN_SOUND.play();
         AnimationTimer timer = new AnimationTimer() {
             double old = -1;
 
@@ -47,12 +58,12 @@ public class Clouds extends GameObjectPane<Cloud> implements Updatable {
     }
 
     private double elapsed = 0;
-    private double rainElapsed = 0;
+
 
     @Override
     public void update(double frameTime) {
         elapsed += frameTime;
-        rainElapsed += frameTime;
+
 
         // add initial clouds
         if (getChildren().isEmpty()) {
@@ -63,23 +74,26 @@ public class Clouds extends GameObjectPane<Cloud> implements Updatable {
             }
             return;
         }
-        //every second, cloud losses 1% saturation
-        if (rainElapsed >= 0.5) {
-            rainElapsed = 0;
-            for (Cloud cloud : this) {
-                cloud.rain();
-            }
-        }
 
+        boolean isRaining = false;
         // Not using iterator to avoid concurrent modification exception
         for (int i = 0; i < getChildren().size(); i++) {
             Cloud cloud = (Cloud) getChildren().get(i);
             cloud.update(frameTime);
 
+            if (cloud.isRaining()) {
+                isRaining = true;
+            }
+
             if (!cloud.isDead()) continue;
 
             remove(cloud);
             notifyCloudDestroyed(cloud);
+        }
+        if(isRaining) {
+            RAIN_SOUND.setVolume(0.5);
+        } else {
+            RAIN_SOUND.setVolume(0);
         }
 
         if (getChildren().size() >= MAX_CLOUDS) return;
