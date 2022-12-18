@@ -13,35 +13,40 @@ import rainmaker.services.Vector;
 
 import java.util.ArrayList;
 
-public class Game extends Pane implements CloudsListener {
-    private static final Game INSTANCE = new Game();
+public class Game extends Pane {
     public static final int GAME_WIDTH = 800;
     public static final int GAME_HEIGHT = 800;
+    public static final double UNIVERSAL_SPEED_MULTIPLIER = 30;
+    private static final Game INSTANCE = new Game();
+    private static final double PAD_RADIUS = GAME_WIDTH / 14;
     private final Bounds gameBounds =
             new BoundingBox(0, 0, GAME_WIDTH, GAME_HEIGHT);
     private final Vector COPTER_INITIAL_POS =
             new Vector(gameBounds.getWidth() / 2, 100);
     private final Point2D PAD_INITIAL_POSITION =
             new Point2D(gameBounds.getHeight() / 2, 100);
-    private static final double PAD_RADIUS = GAME_WIDTH / 14;
     private final AnimationTimer animationTimer;
     private final Pane groundObjects = new Pane();
     private final Pane airObjects = new Pane();
+    Runnable onCloseRequest;
     private Helicopter helicopter;
     private Helipad helipad;
-    private Clouds clouds;
+    private final Clouds clouds;
     private Ponds ponds;
-    private Blimps blimps;
-    Runnable onCloseRequest;
-    private BoundingBoxPane boundingBoxes;
-    private DistanceLinesPane distanceLines;
+    private final Blimps blimps;
+    private final BoundingBoxPane boundingBoxes = new BoundingBoxPane();
+    private final DistanceLinesPane distanceLines = new DistanceLinesPane();
+    private final Wind wind = new Wind();
 
     private Game() {
         setScaleY(-1);
+        clouds = new Clouds();
+        blimps = new Blimps();
         init();
 
         animationTimer = new AnimationTimer() {
             double old = -1;
+
             @Override
             public void handle(long now) {
                 if (old < 0) {
@@ -52,7 +57,6 @@ public class Game extends Pane implements CloudsListener {
                 old = now;
 
                 update(FrameTime);
-                blimps.update(FrameTime);
             }
         };
 
@@ -95,6 +99,42 @@ public class Game extends Pane implements CloudsListener {
         helicopter.update(frameTime);
         ponds.update(frameTime);
         rain(frameTime);
+        checkBlimpHeliRefueling(frameTime);
+
+    }
+
+    private void checkBlimpHeliRefueling(double frameTime) {
+        for (Blimp blimp : blimps) {
+            boolean isOverBlimp = helicopter.intersects(blimp);
+            if (!isOverBlimp) {
+                blimp.isRefueling(false);
+                continue;
+            }
+
+            if (Math.abs(helicopter.getSpeed() - blimp.getSpeed()) > 0.5) {
+                blimp.isRefueling(false);
+                continue;
+            }
+
+            // also check if their heading angle is within 20 degrees
+            if (smallestDifferenceBetweenAngles(helicopter.getHeading(), blimp.getHeading()) > 20) {
+                blimp.isRefueling(false);
+                continue;
+            }
+
+
+            double siphonedFuel = blimp.siphonFuel(frameTime * 1000);
+            helicopter.refuel(siphonedFuel);
+            blimp.isRefueling(true);
+        }
+    }
+
+    private double smallestDifferenceBetweenAngles(double a, double b) {
+        double difference = Math.abs(a - b);
+        if (difference > 180) {
+            difference = 360 - difference;
+        }
+        return difference;
     }
 
     private void rain(double frameTime) {
@@ -113,20 +153,36 @@ public class Game extends Pane implements CloudsListener {
         }
     }
 
+    public void handleCloudAdded(Cloud cloud) {
+        boundingBoxes.add(cloud);
+        for (Pond pond : ponds) {
+            distanceLines.add(cloud, pond);
+        }
+        wind.registerObserver(cloud);
+    }
+
+    public void handleCloudRemoved(Cloud cloud) {
+        boundingBoxes.removeFor(cloud);
+        distanceLines.removeIfInvolves(cloud);
+        wind.removeObserver(cloud);
+    }
+
     public void handleBlimpAdded(Blimp blimp) {
         //draw distance lines between blimp and helicopter
         distanceLines.add(helicopter, blimp);
+        boundingBoxes.add(blimp);
     }
 
     public void handleBlimpRemoved(Blimp blimp) {
         //remove distance lines between blimp and helicopter
         distanceLines.removeIfInvolves(blimp);
+        boundingBoxes.removeFor(blimp);
     }
 
     public void handleCopterFlying() {
         //move the helicopter from the ground to the air pane
         groundObjects.getChildren().remove(helicopter);
-        if(!airObjects.getChildren().contains(helicopter)) {
+        if (!airObjects.getChildren().contains(helicopter)) {
             airObjects.getChildren().add(helicopter);
         }
     }
@@ -134,7 +190,7 @@ public class Game extends Pane implements CloudsListener {
     public void handleCopterCrash() {
         //move the helicopter from the air to the ground pane
         airObjects.getChildren().remove(helicopter);
-        if(!groundObjects.getChildren().contains(helicopter))
+        if (!groundObjects.getChildren().contains(helicopter))
             groundObjects.getChildren().add(helicopter);
 
         animationTimer.stop();
@@ -146,7 +202,7 @@ public class Game extends Pane implements CloudsListener {
                 init();
                 animationTimer.start();
             } else {
-                if(onCloseRequest != null) onCloseRequest.run();
+                if (onCloseRequest != null) onCloseRequest.run();
             }
         });
         alert.show();
@@ -155,14 +211,14 @@ public class Game extends Pane implements CloudsListener {
     public void handleCopterLanded() {
         //move the helicopter from the air to the ground
         airObjects.getChildren().remove(helicopter);
-        if(!groundObjects.getChildren().contains(helicopter))
+        if (!groundObjects.getChildren().contains(helicopter))
             groundObjects.getChildren().add(helicopter);
 
         if (ponds.getAvgWaterLevel() < 80) return;
 
         animationTimer.stop();
 
-        double score = (ponds.getAvgWaterLevel() / 100) * (double) helicopter.getFuel();
+        double score = (ponds.getAvgWaterLevel() / 100) * helicopter.getFuel();
         String msg = "You Win! Your score is " + (int) score + ". " +
                 "Would you like to play again?";
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, msg,
@@ -172,7 +228,7 @@ public class Game extends Pane implements CloudsListener {
                 init();
                 animationTimer.start();
             } else {
-                if(onCloseRequest != null) onCloseRequest.run();
+                if (onCloseRequest != null) onCloseRequest.run();
             }
         });
         alert.show();
@@ -183,9 +239,11 @@ public class Game extends Pane implements CloudsListener {
         groundObjects.getChildren().clear();
         airObjects.getChildren().clear();
 
+        boundingBoxes.clear();
+        distanceLines.clear();
 
-        clouds = new Clouds();
-        clouds.addListener(this);
+        clouds.clear();
+        blimps.clear();
 
         helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
 
@@ -203,21 +261,12 @@ public class Game extends Pane implements CloudsListener {
         ImageBackground background = new ImageBackground(GAME_WIDTH,
                 GAME_HEIGHT);
 
-        boundingBoxes = new BoundingBoxPane();
-        distanceLines = new DistanceLinesPane();
 
         boundingBoxes.addAll(helicopter, helipad);
         for (Pond pond : ponds) {
             boundingBoxes.add(pond);
         }
-        for (Cloud cloud : clouds) {
-            boundingBoxes.add(cloud);
-            for (Pond pond : ponds) {
-                distanceLines.add(cloud, pond);
-            }
-        }
 
-        blimps = new Blimps();
 
         groundObjects.getChildren().addAll(background, ponds, helipad, helicopter);
         airObjects.getChildren().addAll(clouds, blimps);
@@ -232,20 +281,6 @@ public class Game extends Pane implements CloudsListener {
             if (helicopter.intersects(cloud)) {
                 helicopter.seedCloud(cloud);
             }
-        }
-    }
-
-    @Override
-    public void onCloudDestroyed(Cloud cloud) {
-        boundingBoxes.remove(cloud);
-        distanceLines.removeIfInvolves(cloud);
-    }
-
-    @Override
-    public void onCloudSpawned(Cloud cloud) {
-        boundingBoxes.add(cloud);
-        for (Pond pond : ponds) {
-            distanceLines.add(cloud, pond);
         }
     }
 

@@ -17,14 +17,6 @@ public class DistanceLinesPane extends Pane {
         getChildren().add(new DistanceLine(obj1, obj2));
     }
 
-    public void addAll(GameObject... objects) {
-        for (int i = 0; i < objects.length; i++) {
-            for (int j = i + 1; j < objects.length; j++) {
-                add(objects[i], objects[j]);
-            }
-        }
-    }
-
     public void removeIfInvolves(GameObject obj) {
         getChildren().removeIf(node -> {
             if (node instanceof DistanceLine) {
@@ -33,5 +25,9 @@ public class DistanceLinesPane extends Pane {
             }
             return false;
         });
+    }
+
+    public void clear() {
+        getChildren().clear();
     }
 }

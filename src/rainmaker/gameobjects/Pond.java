@@ -1,15 +1,20 @@
 package rainmaker.gameobjects;
 
 import javafx.geometry.Point2D;
+import javafx.scene.Node;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Shape;
 import rainmaker.Game;
 import rainmaker.Updatable;
+import rainmaker.services.BezierOval;
 import rainmaker.services.RandomGenerator;
 
 public class Pond extends GameObject implements Updatable {
     private final GameText waterLevelText = new GameText();
     Circle pondShape = new Circle();
+
+    BezierOval shape;
 
     private double pondArea;
     private double waterLevel = 0;
@@ -19,15 +24,35 @@ public class Pond extends GameObject implements Updatable {
         pondShape.setRadius(getRadius());
         pondShape.setFill(Color.BLUE);
 
+        shape = new BezierOval.Builder(getRadius(), getRadius())
+                .setStartAngle(0)
+                .setAngleIncrementMin(72)
+                .setAngleIncrementMax(72)
+                .setOverlapAngle(0)
+                .setMinOffsetFromOval(10)
+                .setMaxOffsetFromOval(20)
+                .setRandomizeControlAngle(true)
+                .build();
+
+        System.out.println("Pond area: " + pondArea);
+
+        shape.setFill(Color.BLUE);
+
         this.waterLevel = initialWater;
         waterLevelText.setText(String.valueOf(waterLevel));
         waterLevelText.setFill(Color.WHITE);
 
-        getChildren().addAll(pondShape, waterLevelText);
+        getChildren().add(shape);
+        getChildren().addAll(waterLevelText);
+        pondShape.setVisible(false);
         setTranslateX(initialPosition.getX());
         setTranslateY(initialPosition.getY());
 
-        shapes.add(pondShape);
+        for(Node node : shape.getChildren()) {
+            if(node instanceof Shape) {
+                shapes.add((Shape) node);
+            }
+        }
     }
 
     public static Pond generatePond() {
@@ -52,6 +77,9 @@ public class Pond extends GameObject implements Updatable {
     public void addWater(double water) {
         pondArea += 100 * water;
         waterLevel += water;
+
+        // scale the pond
+
     }
 
     public double getCurrentWaterLevel() {
@@ -60,6 +88,8 @@ public class Pond extends GameObject implements Updatable {
 
     @Override
     public void update(double FrameTime) {
+        shape.setScaleX(getRadius() / shape.getRadiusX());
+        shape.setScaleY(getRadius() / shape.getRadiusY());
         pondShape.setRadius(getRadius());
 
         waterLevelText.setText(String.valueOf((int) waterLevel));

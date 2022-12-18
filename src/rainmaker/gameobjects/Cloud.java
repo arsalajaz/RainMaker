@@ -4,47 +4,63 @@ import javafx.geometry.Point2D;
 import javafx.scene.Node;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Shape;
-import rainmaker.Game;
+import rainmaker.Observer;
 import rainmaker.Updatable;
 import rainmaker.services.BezierOval;
 import rainmaker.services.RandomGenerator;
 import rainmaker.services.Vector;
 
-enum CloudState {
-    SPAWNED, ALIVE, DEAD
-}
-
-public class Cloud extends GameObject implements Updatable {
-    private static final double WIND_SPEED = 0.4;
-    private static final double WIND_DIRECTION = 0;
+public class Cloud extends TransientGameObject implements Updatable, Observer {
     private static final double SATURATION_LOSS_DELAY_IN_SECS = 1;
-    private CloudState state = CloudState.SPAWNED;
-    private Vector position;
-    private Vector velocity;
-    private final BezierOval cloudShape;
-    private final GameText percentText;
+    private final BezierOval shape;
+    private final GameText infoText;
+    private final double speedOffset = RandomGenerator.getRandomDouble(0.5,
+            1.5);
     private int saturation = 0;
-    private double speedOffset = RandomGenerator.getRandomDouble(40, 70);
+    private double rainTimeElapsed = 0;
 
-    public Cloud(Point2D initPosition, Point2D shapeSize) {
-        cloudShape = new BezierOval(shapeSize.getX(), shapeSize.getY());
-        cloudShape.setFill(Color.rgb(255, 255, 255));
-        cloudShape.setStroke(Color.BLACK);
-        cloudShape.setStrokeWidth(1);
+    public Cloud(Vector initPos, Point2D shapeSize) {
+        super(initPos);
 
-        percentText = new GameText();
-        percentText.setFill(Color.BLUE);
+        shape = new BezierOval.Builder(shapeSize.getX(), shapeSize.getY())
+                .setStartAngle(RandomGenerator.getRandomInt(0, 360))
+                .setAngleIncrementMin(60)
+                .setAngleIncrementMax(72)
+                .setOverlapAngle(72)
+                .setMinOffsetFromOval(10)
+                .setMaxOffsetFromOval(20)
+                .build();
 
-        getChildren().addAll(cloudShape, percentText);
-        this.position = new Vector(initPosition.getX(), initPosition.getY());
+        shape.setFill(Color.rgb(255, 255, 255));
+        shape.setStroke(Color.BLACK);
+        shape.setStrokeWidth(1);
 
-        translate(initPosition.getX(), initPosition.getY());
+        infoText = new GameText();
+        infoText.setFill(Color.BLUE);
 
-        for(Node node : cloudShape.getChildren()) {
-            if(node instanceof Shape) {
-                shapes.add((Shape)node);
+        setSpeed((speedOffset));
+        setHeading(0);
+
+        getChildren().addAll(shape, infoText);
+
+        for (Node node : shape.getChildren()) {
+            if (node instanceof Shape) {
+                shapes.add((Shape) node);
             }
         }
+        infoText.setText("0%");
+        infoText.setTranslateX(-infoText.getLayoutBounds().getWidth() / 2);
+        infoText.setTranslateY(infoText.getLayoutBounds().getHeight() / 2);
+    }
+
+    public static Cloud createRandomCloud(boolean onScreen) {
+        double radiusX = RandomGenerator.getRandomDouble(50, 60);
+        double radiusY = RandomGenerator.getRandomDouble(30, 40);
+        double x = onScreen ? RandomGenerator.getRandomDouble(radiusX,
+                800 - radiusX) : -radiusX - 10;
+        double y = RandomGenerator.getRandomDouble(radiusY, 800 - radiusY);
+        Vector position = new Vector(x, y);
+        return new Cloud(position, new Point2D(radiusX, radiusY));
     }
 
     public boolean isRaining() {
@@ -65,69 +81,27 @@ public class Cloud extends GameObject implements Updatable {
         saturation++;
     }
 
-    private double rainTimeElapsed = 0;
     @Override
     public void update(double FrameTime) {
-        if (isDead()) return;
+        move(FrameTime);
 
         rainTimeElapsed += FrameTime;
-
         //every second, cloud losses 1% saturation
         if (rainTimeElapsed >= SATURATION_LOSS_DELAY_IN_SECS) {
             rainTimeElapsed = 0;
             rain();
         }
 
-        velocity = new Vector(WIND_SPEED * FrameTime * speedOffset,
-                Math.toRadians(WIND_DIRECTION), true);
-        position = position.add(velocity);
-
-        if (state != CloudState.ALIVE && isWithinBounds()) {
-            state = CloudState.ALIVE;
-        } else if (shouldDie()) {
-            state = CloudState.DEAD;
-        }
-
-
-        translate(position.getX(), position.getY());
-
-        cloudShape.setFill(Color.rgb(255 - saturation, 255 - saturation,
+        shape.setFill(Color.rgb(255 - saturation, 255 - saturation,
                 255 - saturation));
-        percentText.setText(saturation + "%");
-        percentText.setTranslateX(-percentText.getLayoutBounds().getWidth() / 2);
-        percentText.setTranslateY(percentText.getLayoutBounds().getHeight() / 2);
-
+        infoText.setText(saturation + "%");
     }
 
-    private boolean isWithinBounds() {
-        double cloudWidth = getLayoutBounds().getWidth();
-        double cloudHeight = getLayoutBounds().getHeight();
-        return position.getX() > cloudWidth / 2 &&
-                position.getX() < Game.GAME_WIDTH - cloudWidth / 2 &&
-                position.getY() > cloudHeight / 2 &&
-                position.getY() < Game.GAME_HEIGHT - cloudHeight / 2;
-    }
-
-    private boolean shouldDie() {
-        double cloudWidth = getLayoutBounds().getWidth();
-        double cloudHeight = getLayoutBounds().getHeight();
-        return position.getX() < -cloudWidth / 2 && velocity.getX() < 0 ||
-                position.getX() > Game.GAME_WIDTH + cloudWidth / 2 && velocity.getX() > 0 ||
-                position.getY() < -cloudHeight / 2 && velocity.getY() < 0 ||
-                position.getY() > Game.GAME_HEIGHT + cloudHeight / 2 && velocity.getY() > 0;
-    }
-
-    public static Cloud createRandomCloud(boolean onScreen) {
-        double radiusX = RandomGenerator.getRandomDouble(50, 60);
-        double radiusY = RandomGenerator.getRandomDouble(30, 40);
-        double x = onScreen ? RandomGenerator.getRandomDouble(radiusX,
-                800 - radiusX) : -radiusX - 10;
-        double y = RandomGenerator.getRandomDouble(radiusY, 800 - radiusY);
-        Point2D position = new Point2D(x, y);
-        return new Cloud(position, new Point2D(radiusX, radiusY));
-    }
-
-    public boolean isDead() {
-        return state == CloudState.DEAD;
+    @Override
+    public void update(Object o) {
+        if (o instanceof Wind wind) {
+            setSpeed(wind.getSpeed() + speedOffset);
+            setHeading(wind.getDirection());
+        }
     }
 }

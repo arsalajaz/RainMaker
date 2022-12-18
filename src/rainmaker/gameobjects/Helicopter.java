@@ -4,12 +4,14 @@ import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
 import javafx.util.Duration;
+import rainmaker.Game;
 import rainmaker.Updatable;
 import rainmaker.services.Vector;
 
 import java.io.File;
 
 public class Helicopter extends GameObject implements Updatable {
+    private static final double HOOVER_FUEL_CONSUMPTION = 20;
     public static final double MAX_SPEED = 10;
     public static final double MIN_SPEED = -2;
     public static final double ACCELERATION = 0.1;
@@ -107,7 +109,7 @@ public class Helicopter extends GameObject implements Updatable {
     private void calculateNewPosition(double frameTime) {
         double angle = Math.toRadians(getCartesianAngle());
         Vector velocity = new Vector(speed, angle, true)
-                .multiply(frameTime * 30);
+                .multiply(frameTime * Game.UNIVERSAL_SPEED_MULTIPLIER);
 
         position = position.add(velocity);
     }
@@ -168,6 +170,18 @@ public class Helicopter extends GameObject implements Updatable {
 
     protected Duration takeOffCurrentTime = Duration.ZERO;
     protected Duration landingCurrentTime = Duration.ZERO;
+
+    public double getSpeed() {
+        return speed;
+    }
+
+    public void refuel(double siphonedFuel) {
+        fuel += siphonedFuel;
+    }
+
+    public double getHeading() {
+        return getCartesianAngle();
+    }
 
     abstract class HelicopterState {
 
@@ -234,12 +248,15 @@ public class Helicopter extends GameObject implements Updatable {
 
     class StartingState extends HelicopterState {
         public StartingState() {
-            double total = TAKEOFF_SOUND_MEDIA.getDuration().toMillis();
-            double landingStoppedAt = landingCurrentTime.toMillis();
-            Duration newStart = new Duration(total - landingStoppedAt);
+            double totalSoundDuration =
+                    TAKEOFF_SOUND_MEDIA.getDuration().toMillis();
+            double landingStoppedAtDuration =
+                    landingCurrentTime.toMillis();
+            Duration newSoundStartDuration =
+                    new Duration(totalSoundDuration - landingStoppedAtDuration);
 
             if(landingCurrentTime != Duration.ZERO) {
-                TAKEOFF_SOUND.setStartTime(newStart);
+                TAKEOFF_SOUND.setStartTime(newSoundStartDuration);
             } else {
                 TAKEOFF_SOUND.setStartTime(Duration.ZERO);
             }
@@ -290,7 +307,7 @@ public class Helicopter extends GameObject implements Updatable {
 
         @Override
         void nextFrame(double frameTime) {
-            fuel = fuel - 10 * frameTime;
+            fuel = fuel - (HOOVER_FUEL_CONSUMPTION * frameTime);
             if (fuel <= 0) {
                 fuel = 0;
                 currState = new StoppingState();
@@ -311,8 +328,6 @@ public class Helicopter extends GameObject implements Updatable {
             } else {
                 LANDING_SOUND.setStartTime(Duration.ZERO);
             }
-
-
 
             LANDING_SOUND.play();
             LANDING_SOUND.setVolume(0.3);
@@ -354,13 +369,13 @@ public class Helicopter extends GameObject implements Updatable {
         }
 
         @Override
-        void seedCloud(Cloud cloud) { /* Do nothing - helicopter is stopping */ }
+        void seedCloud(Cloud cloud) {
+            // Do nothing
+        }
 
         @Override
         void nextFrame(double frameTime) {
-//            FLYING_SOUND.setVolume(
-//                    heloBlade.getCurrentSpeed() / HeloBlade.MAX_ROTATIONAL_SPEED
-//            );
+            // do nothing
         }
 
         public String toString() {
@@ -371,7 +386,6 @@ public class Helicopter extends GameObject implements Updatable {
     class ReadyState extends HelicopterState {
 
         public ReadyState() {
-
             FLYING_SOUND.setVolume(0.5);
         }
 
@@ -415,8 +429,12 @@ public class Helicopter extends GameObject implements Updatable {
 
         @Override
         void nextFrame(double frameTime) {
-            double speedConsumption = 5 * Math.abs(speed) * frameTime;
-            double hoverConsumption = 20 * frameTime;
+            double speedConsumption = Math.abs(speed) * HOOVER_FUEL_CONSUMPTION;
+            double hoverConsumption = HOOVER_FUEL_CONSUMPTION;
+
+            speedConsumption *= frameTime;
+            hoverConsumption *= frameTime;
+
             fuel = (fuel - speedConsumption - hoverConsumption);
 
             if (fuel <= 0) {

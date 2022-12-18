@@ -1,8 +1,6 @@
 package rainmaker.gameobject_collections;
 
 import javafx.geometry.Bounds;
-import javafx.geometry.Point2D;
-import rainmaker.services.RandomGenerator;
 import rainmaker.Updatable;
 import rainmaker.gameobjects.Pond;
 
@@ -59,17 +57,6 @@ public class Ponds extends GameObjectPane<Pond> implements Updatable {
             }
         }
         return false;
-    }
-
-    public static double convertAreaToRadius(double area) {
-        return Math.sqrt(area / Math.PI);
-    }
-
-    private Point2D randomSpawnPoint(double radius) {
-        return new Point2D(
-                RandomGenerator.getRandomDouble(radius, windowBounds.getWidth() - radius),
-                RandomGenerator.getRandomDouble(radius, windowBounds.getHeight() - radius)
-        );
     }
 
     @Override

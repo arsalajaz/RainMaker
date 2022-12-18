@@ -45,7 +45,30 @@ public abstract class GameObject extends Group {
     public boolean intersects(GameObject object) {
         for (Shape shape : shapes) {
             for (Shape otherShape : object.shapes) {
-                if (!Shape.intersect(shape, otherShape).getBoundsInLocal().isEmpty()) {
+                if (Shape.intersect(shape, otherShape).getBoundsInLocal()
+                        .isEmpty()) continue;
+                return true;
+
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Return true if interests with the other objects within the given
+     * proportion of the object's area or more
+     */
+    public boolean intersects(GameObject object, double proportion) {
+        for (Shape shape : shapes) {
+            for (Shape otherShape : object.shapes) {
+                if (Shape.intersect(shape, otherShape).getBoundsInLocal()
+                        .isEmpty())
+                    continue;
+
+                double currProportion = Shape.intersect(shape, otherShape)
+                        .getBoundsInLocal().getWidth() /
+                        shape.getBoundsInLocal().getWidth();
+                if (currProportion >= currProportion) {
                     return true;
                 }
             }

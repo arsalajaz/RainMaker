@@ -10,9 +10,11 @@ import rainmaker.services.RandomGenerator;
 public class Blimps extends GameObjectPane<Blimp> implements Updatable {
     private static final int MAX_BLIMPS = 2;
     private static final int MIN_BLIMPS = 0;
+    private final AnimationTimer timer;
+    private double elapsed = 0;
 
     public Blimps() {
-        AnimationTimer timer = new AnimationTimer() {
+        timer = new AnimationTimer() {
             double old = -1;
 
             @Override
@@ -29,7 +31,6 @@ public class Blimps extends GameObjectPane<Blimp> implements Updatable {
         timer.start();
     }
 
-    private double elapsed = 0;
     @Override
     public void update(double frameTime) {
         // loop through all blimps, remove if dead
@@ -53,8 +54,6 @@ public class Blimps extends GameObjectPane<Blimp> implements Updatable {
                 }
             }
         }
-
-
     }
 }
 

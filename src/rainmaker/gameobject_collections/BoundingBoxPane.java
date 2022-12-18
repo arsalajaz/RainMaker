@@ -23,7 +23,7 @@ public class BoundingBoxPane extends Pane {
         }
     }
 
-    public void remove(GameObject obj) {
+    public void removeFor(GameObject obj) {
         getChildren().removeIf(node -> {
             if (node instanceof ObjectBoundingBox) {
                 ObjectBoundingBox box = (ObjectBoundingBox) node;
@@ -31,5 +31,9 @@ public class BoundingBoxPane extends Pane {
             }
             return false;
         });
+    }
+
+    public void clear() {
+        getChildren().clear();
     }
 }
