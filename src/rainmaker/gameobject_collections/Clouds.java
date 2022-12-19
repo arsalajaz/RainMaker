@@ -80,7 +80,7 @@ public class Clouds extends GameObjectPane<Cloud> implements Updatable {
             Game.getInstance().handleCloudRemoved(cloud);
         }
 
-        if (isRaining) RAIN_SOUND.setVolume(0.5);
+        if (isRaining) RAIN_SOUND.setVolume(1);
         else RAIN_SOUND.setVolume(0);
 
         if (getChildren().size() >= MAX_CLOUDS) return;

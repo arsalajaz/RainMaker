@@ -11,7 +11,7 @@ import rainmaker.services.Vector;
 import java.io.File;
 
 public class Helicopter extends GameObject implements Updatable {
-    private static final double HOOVER_FUEL_CONSUMPTION = 20;
+    private static final double HOOVER_FUEL_CONSUMPTION = 25;
     public static final double MAX_SPEED = 10;
     public static final double MIN_SPEED = -2;
     public static final double ACCELERATION = 0.1;
@@ -248,6 +248,7 @@ public class Helicopter extends GameObject implements Updatable {
 
     class StartingState extends HelicopterState {
         public StartingState() {
+            FLYING_SOUND.setVolume(0);
             double totalSoundDuration =
                     TAKEOFF_SOUND_MEDIA.getDuration().toMillis();
             double landingStoppedAtDuration =
@@ -322,9 +323,17 @@ public class Helicopter extends GameObject implements Updatable {
 
     class StoppingState extends HelicopterState {
         public StoppingState() {
+            FLYING_SOUND.setVolume(0);
 
-            if(takeOffCurrentTime.toMillis() > 1) {
-                LANDING_SOUND.setStartTime(new Duration(LANDING_SOUND_MEDIA.getDuration().toMillis() - takeOffCurrentTime.toMillis()));
+            double totalSoundDuration =
+                    LANDING_SOUND_MEDIA.getDuration().toMillis();
+            double takeOffStoppedAtDuration =
+                    takeOffCurrentTime.toMillis();
+            Duration newSoundStartDuration =
+                    new Duration(totalSoundDuration - takeOffStoppedAtDuration);
+
+            if(takeOffCurrentTime != Duration.ZERO) {
+                LANDING_SOUND.setStartTime(newSoundStartDuration);
             } else {
                 LANDING_SOUND.setStartTime(Duration.ZERO);
             }

@@ -4,7 +4,8 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.media.AudioClip;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.ImagePattern;
 import javafx.scene.shape.Circle;
@@ -17,20 +18,24 @@ import rainmaker.services.Vector;
 
 import java.io.File;
 
-enum BlimpState {
-    CREATED,
-    IN_VIEW,
-    DEAD
-}
-
 public class Blimp extends TransientGameObject implements Updatable {
     private static final double BODY_WIDTH = 180;
     private static final double BODY_HEIGHT = 70;
     private static final double PROPELLER_WIDTH = 30;
     private static final double PROPELLER_HEIGHT = 80;
-    private final double SPEED = RandomGenerator.getRandomDouble(2,4);
-    private final AudioClip REFUEL_SOUND = new AudioClip(
+    private final double SPEED = RandomGenerator.getRandomDouble(3,5);
+
+    private static final Media REFUEL_SOUND_MEDIA = new Media(
             new File("src/resources/refuel_sound.wav").toURI().toString());
+    private final MediaPlayer REFUEL_SOUND =
+            new MediaPlayer(REFUEL_SOUND_MEDIA);
+
+    private static final Media ENGINE_SOUND_MEDIA = new Media(
+            new File("src/resources/blimp_audio.wav").toURI().toString());
+    private final MediaPlayer ENGINE_SOUND =
+            new MediaPlayer(ENGINE_SOUND_MEDIA);
+
+    private double distanceFromMainPlayer;
 
     private final double HEADING = 0;
     private GameText fuelText = new GameText();
@@ -87,6 +92,11 @@ public class Blimp extends TransientGameObject implements Updatable {
         setupPropellerAnimation();
     }
 
+    public void updateDistanceFromMainPlayer(double distance) {
+        distanceFromMainPlayer = distance;
+        updateEngineAudioVolume();
+    }
+
     public static Blimp getRandomBlimp() {
         double fuel = RandomGenerator.getRandomDouble(5000, 10000);
         fuel = Math.round(fuel / 1000) * 1000;
@@ -117,12 +127,12 @@ public class Blimp extends TransientGameObject implements Updatable {
         this.refueling = refueling;
         if (refueling) {
             refuelingLight.setFill(Color.GREEN);
-            if(!REFUEL_SOUND.isPlaying()) {
+            if(!REFUEL_SOUND.getStatus().equals(MediaPlayer.Status.PLAYING)) {
                 REFUEL_SOUND.play();
             }
         } else {
             refuelingLight.setFill(Color.RED);
-            if(REFUEL_SOUND.isPlaying()) {
+            if(REFUEL_SOUND.getStatus().equals(MediaPlayer.Status.PLAYING)) {
                 REFUEL_SOUND.stop();
             }
         }
@@ -135,6 +145,32 @@ public class Blimp extends TransientGameObject implements Updatable {
         fuelText.setTranslateY(fuelText.getBoundsInParent().getHeight() / 2);
 
         move(frameTime);
+        checkAndPlayIfAudioShouldPlay();
+    }
+
+    //update engine audio volume based on distance from main player
+    private void updateEngineAudioVolume() {
+        double volume = 1 - (distanceFromMainPlayer / 800);
+        if(volume < 0) {
+            volume = 0;
+        }
+        ENGINE_SOUND.setVolume(volume);
+    }
+
+
+    private void checkAndPlayIfAudioShouldPlay() {
+        if (isDead()) {
+            if(ENGINE_SOUND.getStatus().equals(MediaPlayer.Status.PLAYING)) {
+                ENGINE_SOUND.stop();
+            }
+            if(REFUEL_SOUND.getStatus().equals(MediaPlayer.Status.PLAYING)) {
+                REFUEL_SOUND.stop();
+            }
+        } else {
+            if(!ENGINE_SOUND.getStatus().equals(MediaPlayer.Status.PLAYING)) {
+                ENGINE_SOUND.play();
+            }
+        }
     }
 
     public double siphonFuel(double amount) {

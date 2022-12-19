@@ -7,6 +7,7 @@ import javafx.geometry.Point2D;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.layout.Pane;
+import javafx.scene.paint.Color;
 import rainmaker.gameobject_collections.*;
 import rainmaker.gameobjects.*;
 import rainmaker.services.Vector;
@@ -40,23 +41,35 @@ public class Game extends Pane {
 
     private Game() {
         setScaleY(-1);
+
         clouds = new Clouds();
         blimps = new Blimps();
         init();
+        GameText gameText = new GameText();
+        gameText.setFill(Color.BLUE);
+        gameText.setTranslateX(10);
+        gameText.setTranslateY(10);
+        getChildren().add(gameText);
+
 
         animationTimer = new AnimationTimer() {
             double old = -1;
-
+            int frameCount = 0;
             @Override
             public void handle(long now) {
+                frameCount++;
                 if (old < 0) {
                     old = now;
                     return;
                 }
                 double FrameTime = (now - old) / 1e9;
                 old = now;
-
                 update(FrameTime);
+
+                if (frameCount == 200) {
+                    frameCount = 0;
+                    gameText.setText("FPS: " + (int) (1 / FrameTime));
+                }
             }
         };
 
@@ -100,6 +113,11 @@ public class Game extends Pane {
         ponds.update(frameTime);
         rain(frameTime);
         checkBlimpHeliRefueling(frameTime);
+
+        for(Blimp blimp : blimps) {
+            double distance = DistanceLine.getDistance(helicopter, blimp);
+            blimp.updateDistanceFromMainPlayer(distance);
+        }
 
     }
 
