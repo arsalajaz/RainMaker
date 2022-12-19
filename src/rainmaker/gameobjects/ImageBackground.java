@@ -8,7 +8,7 @@ public class ImageBackground extends Pane {
     private final ImageView background;
 
     public ImageBackground(double width, double height) {
-        background = new ImageView(new Image("/resources/Desert.jpg"));
+        background = new ImageView(new Image("/desert_bg_img.jpg"));
         background.setFitWidth(width);
         background.setFitHeight(height);
         getChildren().add(background);

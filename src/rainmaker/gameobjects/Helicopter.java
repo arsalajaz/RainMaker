@@ -1,5 +1,6 @@
 package rainmaker.gameobjects;
 
+import javafx.scene.media.AudioClip;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
@@ -11,28 +12,32 @@ import rainmaker.services.Vector;
 import java.io.File;
 
 public class Helicopter extends GameObject implements Updatable {
-    private static final double HOOVER_FUEL_CONSUMPTION = 25;
     public static final double MAX_SPEED = 10;
     public static final double MIN_SPEED = -2;
     public static final double ACCELERATION = 0.1;
     public static final double ROTATION_CHANGE = 1;
+    public static final AudioClip SEEDING_SOUND =
+            new AudioClip(new File("src/resources/cloud_seeding_sound.wav").toURI()
+                    .toString());
+    private static final double HOOVER_FUEL_CONSUMPTION = 25;
     private static final Media FLYING_SOUND_MEDIA = new Media(
-            new File("src/resources/flying_sound.mp3").toURI().toString());
+            new File("src/resources/copter_flying_hoovering.mp3").toURI().toString());
     public static final MediaPlayer FLYING_SOUND =
             new MediaPlayer(FLYING_SOUND_MEDIA);
     private static final Media TAKEOFF_SOUND_MEDIA = new Media(
-            new File("src/resources/takeoff (2).wav").toURI().toString());
+            new File("src/resources/takeoff_sound.wav").toURI().toString());
     public static final MediaPlayer TAKEOFF_SOUND =
             new MediaPlayer(TAKEOFF_SOUND_MEDIA);
-
     private static final Media LANDING_SOUND_MEDIA = new Media(
-            new File("src/resources/landing.mp3").toURI().toString());
+            new File("src/resources/copter_landing_sound.mp3").toURI().toString());
     public static final MediaPlayer LANDING_SOUND =
             new MediaPlayer(LANDING_SOUND_MEDIA);
     private final GameText fuelText;
     private final GameText stateText;
     private final HeloBody heloBody;
     private final HeloBlade heloBlade;
+    protected Duration takeOffCurrentTime = Duration.ZERO;
+    protected Duration landingCurrentTime = Duration.ZERO;
     private HelicopterState currState;
     private double heading = 0;
     private double speed = 0;
@@ -60,6 +65,7 @@ public class Helicopter extends GameObject implements Updatable {
 
         TAKEOFF_SOUND.setVolume(0);
         LANDING_SOUND.setVolume(0);
+        SEEDING_SOUND.setVolume(1);
 
         getChildren().addAll(heloBody, heloBlade, fuelText, stateText);
 
@@ -168,9 +174,6 @@ public class Helicopter extends GameObject implements Updatable {
                 helipad.getBoundsInParent().contains(getBoundsInParent());
     }
 
-    protected Duration takeOffCurrentTime = Duration.ZERO;
-    protected Duration landingCurrentTime = Duration.ZERO;
-
     public double getSpeed() {
         return speed;
     }
@@ -256,7 +259,7 @@ public class Helicopter extends GameObject implements Updatable {
             Duration newSoundStartDuration =
                     new Duration(totalSoundDuration - landingStoppedAtDuration);
 
-            if(landingCurrentTime != Duration.ZERO) {
+            if (landingCurrentTime != Duration.ZERO) {
                 TAKEOFF_SOUND.setStartTime(newSoundStartDuration);
             } else {
                 TAKEOFF_SOUND.setStartTime(Duration.ZERO);
@@ -324,16 +327,10 @@ public class Helicopter extends GameObject implements Updatable {
     class StoppingState extends HelicopterState {
         public StoppingState() {
             FLYING_SOUND.setVolume(0);
-
-            double totalSoundDuration =
-                    LANDING_SOUND_MEDIA.getDuration().toMillis();
-            double takeOffStoppedAtDuration =
-                    takeOffCurrentTime.toMillis();
-            Duration newSoundStartDuration =
-                    new Duration(totalSoundDuration - takeOffStoppedAtDuration);
-
-            if(takeOffCurrentTime != Duration.ZERO) {
-                LANDING_SOUND.setStartTime(newSoundStartDuration);
+            if (takeOffCurrentTime.toMillis() > 1) {
+                LANDING_SOUND.setStartTime(new Duration(
+                        LANDING_SOUND_MEDIA.getDuration().toMillis() -
+                                takeOffCurrentTime.toMillis()));
             } else {
                 LANDING_SOUND.setStartTime(Duration.ZERO);
             }
@@ -434,6 +431,7 @@ public class Helicopter extends GameObject implements Updatable {
         @Override
         void seedCloud(Cloud cloud) {
             cloud.saturate();
+            SEEDING_SOUND.play();
         }
 
         @Override

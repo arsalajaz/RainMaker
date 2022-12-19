@@ -52,8 +52,8 @@ public class GameApp extends Application {
      * different computers.
      */
     private void setupHelicopterKeyTimers() {
-        KeyPressTimer upKeyTimer = new KeyPressTimer(KeyCode.UP, 50);
-        KeyPressTimer downKeyTimer = new KeyPressTimer(KeyCode.DOWN, 50);
+        KeyPressTimer upKeyTimer = new KeyPressTimer(KeyCode.UP, 60);
+        KeyPressTimer downKeyTimer = new KeyPressTimer(KeyCode.DOWN, 60);
         KeyPressTimer leftKeyTimer = new KeyPressTimer(KeyCode.LEFT, 10);
         KeyPressTimer rightKeyTimer = new KeyPressTimer(KeyCode.RIGHT, 10);
         KeyPressTimer spaceKeyTimer = new KeyPressTimer(KeyCode.SPACE, 80);

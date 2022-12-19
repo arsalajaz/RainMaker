@@ -6,7 +6,7 @@ import javafx.scene.shape.Rectangle;
 
 class HeloBody extends Rectangle {
     public HeloBody() {
-        Image bodyImage = new Image("/resources/HelicopterBody.png");
+        Image bodyImage = new Image("/copter_body.png");
         setFill(new ImagePattern(bodyImage));
 
         // scale the image down to 14% of its original size

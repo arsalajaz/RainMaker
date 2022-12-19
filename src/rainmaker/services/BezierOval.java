@@ -3,20 +3,19 @@ package rainmaker.services;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.*;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Ellipse;
+import javafx.scene.shape.QuadCurve;
 
 import java.util.ArrayList;
 
 public class BezierOval extends Group {
     private final Ellipse oval;
-    private final ArrayList<Point2D> randPointsOnOval = new ArrayList<>();
     private final ArrayList<Integer> angles = new ArrayList<>();
     private final ArrayList<QuadCurve> quadCurves = new ArrayList<>();
 
     private BezierOval(double radiusX, double radiusY) {
         oval = new Ellipse(radiusX, radiusY);
-        //oval.setFill(Color.WHITE);
-        //createShape();
     }
 
 
@@ -24,10 +23,7 @@ public class BezierOval extends Group {
                              int incrementMax, int overlapAngle,
                              int minOffsetFromOval, int maxOffsetFromOval,
                              boolean randomizeControlAngle) {
-        //int startAngle = RandomGenerator.getRandomInt(0, 360);
-        //int overlapAngle = overlap;
         int angle = startAngle;
-        int prevAngle = -1;
         Point2D prevPoint = null;
         while (angle <= 360 + startAngle + overlapAngle) {
 
@@ -36,17 +32,12 @@ public class BezierOval extends Group {
 
             Point2D currentPoint = new Point2D(x, y);
 
-            randPointsOnOval.add(new Point2D(x, y));
-
             angles.add(angle);
 
-            //angle += RandomGenerator.getRandomInt(60,72);
             angle += RandomGenerator.getRandomInt(incrementMin, incrementMax);
-
 
             if (prevPoint == null) {
                 prevPoint = currentPoint;
-                prevAngle = angle;
                 continue;
             }
 
@@ -59,7 +50,7 @@ public class BezierOval extends Group {
             curve.setEndX(currentPoint.getX());
             curve.setEndY(currentPoint.getY());
 
-            double angleControlInDegrees= randomizeControlAngle ?
+            double angleControlInDegrees = randomizeControlAngle ?
                     RandomGenerator.getRandomDouble(angle1, angle2) :
                     (angle1 + angle2) / 2;
 
@@ -79,7 +70,6 @@ public class BezierOval extends Group {
                     Math.cos(angleControlInRadians);
 
             prevPoint = currentPoint;
-            prevAngle = angle;
 
             curve.setControlX(controlX);
             curve.setControlY(controlY);
@@ -123,12 +113,14 @@ public class BezierOval extends Group {
 
     public void showControlPoints() {
         for (QuadCurve curve : quadCurves) {
-            Circle circle = new Circle(curve.getControlX(), curve.getControlY(), 2);
+            Circle circle = new Circle(curve.getControlX(), curve.getControlY(),
+                    2);
             circle.setFill(Color.RED);
             getChildren().add(circle);
 
             //draw a circle on the start and end points
-            Circle circle1 = new Circle(curve.getStartX(), curve.getStartY(), 2);
+            Circle circle1 = new Circle(curve.getStartX(), curve.getStartY(),
+                    2);
             circle1.setFill(Color.GREEN);
             getChildren().add(circle1);
 

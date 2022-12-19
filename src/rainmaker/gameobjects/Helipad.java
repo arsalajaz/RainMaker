@@ -1,16 +1,16 @@
 package rainmaker.gameobjects;
 
 import javafx.geometry.Bounds;
-import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
+import rainmaker.services.Vector;
 
 public class Helipad extends GameObject {
     private final double BORDER_OFFSET = 10;
     Circle pad;
 
-    public Helipad(double radius, Point2D initialPosition) {
+    public Helipad(double radius, Vector initialPosition) {
         pad = new Circle(radius);
         pad.setFill(Color.DARKGRAY);
         pad.setStroke(Color.GRAY);

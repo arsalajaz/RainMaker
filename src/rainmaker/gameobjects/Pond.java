@@ -3,7 +3,6 @@ package rainmaker.gameobjects;
 import javafx.geometry.Point2D;
 import javafx.scene.Node;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
 import javafx.scene.shape.Shape;
 import rainmaker.Game;
 import rainmaker.Updatable;
@@ -12,17 +11,12 @@ import rainmaker.services.RandomGenerator;
 
 public class Pond extends GameObject implements Updatable {
     private final GameText waterLevelText = new GameText();
-    Circle pondShape = new Circle();
-
     BezierOval shape;
-
     private double pondArea;
     private double waterLevel = 0;
 
     public Pond(Point2D initialPosition, int initialWater, double initialArea) {
         pondArea = initialArea;
-        pondShape.setRadius(getRadius());
-        pondShape.setFill(Color.BLUE);
 
         shape = new BezierOval.Builder(getRadius(), getRadius())
                 .setStartAngle(0)
@@ -34,8 +28,6 @@ public class Pond extends GameObject implements Updatable {
                 .setRandomizeControlAngle(true)
                 .build();
 
-        System.out.println("Pond area: " + pondArea);
-
         shape.setFill(Color.BLUE);
 
         this.waterLevel = initialWater;
@@ -44,9 +36,7 @@ public class Pond extends GameObject implements Updatable {
 
         getChildren().add(shape);
         getChildren().addAll(waterLevelText);
-        pondShape.setVisible(false);
-        setTranslateX(initialPosition.getX());
-        setTranslateY(initialPosition.getY());
+        translate(initialPosition.getX(), initialPosition.getY());
 
         for(Node node : shape.getChildren()) {
             if(node instanceof Shape) {
@@ -77,9 +67,6 @@ public class Pond extends GameObject implements Updatable {
     public void addWater(double water) {
         pondArea += 100 * water;
         waterLevel += water;
-
-        // scale the pond
-
     }
 
     public double getCurrentWaterLevel() {
@@ -90,13 +77,11 @@ public class Pond extends GameObject implements Updatable {
     public void update(double FrameTime) {
         shape.setScaleX(getRadius() / shape.getRadiusX());
         shape.setScaleY(getRadius() / shape.getRadiusY());
-        pondShape.setRadius(getRadius());
 
         waterLevelText.setText(String.valueOf((int) waterLevel));
         waterLevelText.setTranslateX(-waterLevelText.getLayoutBounds()
                 .getWidth() / 2);
         waterLevelText.setTranslateY(waterLevelText.getLayoutBounds()
                 .getHeight() / 4);
-
     }
 }

@@ -2,19 +2,16 @@ package rainmaker.gameobject_collections;
 
 import javafx.geometry.Bounds;
 import rainmaker.Updatable;
+import rainmaker.gameobjects.DistanceLine;
 import rainmaker.gameobjects.Pond;
 
 import java.util.ArrayList;
 
 public class Ponds extends GameObjectPane<Pond> implements Updatable {
-
-    private double avgWaterLevel = 0;
     private static final int TOTAL_PONDS = 3;
-    private final Bounds windowBounds;
     private final ArrayList<Bounds> obstacles;
 
-    public Ponds(Bounds bounds, ArrayList<Bounds> obstacles) {
-        this.windowBounds = bounds;
+    public Ponds(ArrayList<Bounds> obstacles) {
         this.obstacles = obstacles;
         while (getChildren().size() < TOTAL_PONDS) {
             Pond pond = Pond.generatePond();
@@ -32,13 +29,7 @@ public class Ponds extends GameObjectPane<Pond> implements Updatable {
     }
 
     private double distanceBetween(Pond pond1, Pond pond2) {
-        double x1 = pond1.getBoundsInParent().getCenterX();
-        double y1 = pond1.getBoundsInParent().getCenterY();
-
-        double x2 = pond2.getBoundsInParent().getCenterX();
-        double y2 = pond2.getBoundsInParent().getCenterY();
-
-        return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
+        return DistanceLine.getDistance(pond1, pond2);
     }
 
     private boolean overlapsObstacle(Pond pond) {
@@ -65,16 +56,13 @@ public class Ponds extends GameObjectPane<Pond> implements Updatable {
         for (int i = 0; i < getChildren().size(); i++) {
             ((Pond) getChildren().get(i)).update(FrameTime);
         }
-
-        // update average water level
-        double totalWaterLevel = 0;
-        for (Pond pond : this) {
-            totalWaterLevel += pond.getCurrentWaterLevel();
-        }
-        avgWaterLevel = totalWaterLevel / getChildren().size();
     }
 
     public double getAvgWaterLevel() {
-        return avgWaterLevel;
+        double total = 0;
+        for (Pond pond : this) {
+            total += pond.getCurrentWaterLevel();
+        }
+        return total / getChildren().size();
     }
 }

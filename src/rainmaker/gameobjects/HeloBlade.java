@@ -25,7 +25,7 @@ public class HeloBlade extends Circle {
     public HeloBlade() {
         super(40);
 
-        setFill(new ImagePattern(new Image("/resources/blades.png")));
+        setFill(new ImagePattern(new Image("/copter_blades.png")));
 
         currState = BladeState.STOPPED;
 

@@ -18,7 +18,7 @@ public class Clouds extends GameObjectPane<Cloud> implements Updatable {
     private static final int MAX_CLOUDS = 5;
     private static final int MIN_CLOUDS = 2;
     private static final Media RAIN_SOUND_PLAYER =
-            new Media(new File("src/resources/rain.wav").toURI().toString());
+            new Media(new File("src/resources/rain_sound.wav").toURI().toString());
     private static final MediaPlayer RAIN_SOUND =
             new MediaPlayer(RAIN_SOUND_PLAYER);
 

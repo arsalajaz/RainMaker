@@ -16,7 +16,7 @@ public class Wind implements Subject {
     private static final double MAX_DURATION_FOR_CHANGE = 10;
     private static final double MIN_DURATION_FOR_CHANGE = 5;
     private static final Media WIND_SOUND_MEDIA = new Media(
-            new File("src/resources/wind.wav")
+            new File("src/resources/wind_sound.wav")
                     .toURI()
                     .toString());
     private static final MediaPlayer WIND_SOUND = new MediaPlayer(

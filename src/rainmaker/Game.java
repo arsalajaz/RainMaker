@@ -1,13 +1,10 @@
 package rainmaker;
 
 import javafx.animation.AnimationTimer;
-import javafx.geometry.BoundingBox;
 import javafx.geometry.Bounds;
-import javafx.geometry.Point2D;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.layout.Pane;
-import javafx.scene.paint.Color;
 import rainmaker.gameobject_collections.*;
 import rainmaker.gameobjects.*;
 import rainmaker.services.Vector;
@@ -19,42 +16,35 @@ public class Game extends Pane {
     public static final int GAME_HEIGHT = 800;
     public static final double UNIVERSAL_SPEED_MULTIPLIER = 30;
     private static final Game INSTANCE = new Game();
-    private static final double PAD_RADIUS = GAME_WIDTH / 14;
-    private final Bounds gameBounds =
-            new BoundingBox(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    private final Vector COPTER_INITIAL_POS =
-            new Vector(gameBounds.getWidth() / 2, 100);
-    private final Point2D PAD_INITIAL_POSITION =
-            new Point2D(gameBounds.getHeight() / 2, 100);
+    private final double PAD_RADIUS = GAME_WIDTH / 14;
+    private final Vector PAD_INIT_POS = new Vector(GAME_WIDTH / 2, 100);
+    private final Vector COPTER_INIT_POS = PAD_INIT_POS;
     private final AnimationTimer animationTimer;
     private final Pane groundObjects = new Pane();
     private final Pane airObjects = new Pane();
-    Runnable onCloseRequest;
-    private Helicopter helicopter;
-    private Helipad helipad;
     private final Clouds clouds;
-    private Ponds ponds;
     private final Blimps blimps;
     private final BoundingBoxPane boundingBoxes = new BoundingBoxPane();
     private final DistanceLinesPane distanceLines = new DistanceLinesPane();
     private final Wind wind = new Wind();
+    Runnable onCloseRequest;
+    private Helicopter helicopter;
+    private Helipad helipad;
+    private Ponds ponds;
 
     private Game() {
         setScaleY(-1);
 
+        // Singletons, can be cleared on reset, no need to recreate
         clouds = new Clouds();
         blimps = new Blimps();
-        init();
-        GameText gameText = new GameText();
-        gameText.setFill(Color.BLUE);
-        gameText.setTranslateX(10);
-        gameText.setTranslateY(10);
-        getChildren().add(gameText);
 
+        init();
 
         animationTimer = new AnimationTimer() {
             double old = -1;
             int frameCount = 0;
+
             @Override
             public void handle(long now) {
                 frameCount++;
@@ -65,11 +55,6 @@ public class Game extends Pane {
                 double FrameTime = (now - old) / 1e9;
                 old = now;
                 update(FrameTime);
-
-                if (frameCount == 200) {
-                    frameCount = 0;
-                    gameText.setText("FPS: " + (int) (1 / FrameTime));
-                }
             }
         };
 
@@ -111,14 +96,18 @@ public class Game extends Pane {
     private void update(double frameTime) {
         helicopter.update(frameTime);
         ponds.update(frameTime);
-        rain(frameTime);
+        fillPonds(frameTime);
         checkBlimpHeliRefueling(frameTime);
+        provideBlimpsWithHeliDistance();
 
-        for(Blimp blimp : blimps) {
+        // wind, clouds, and blimps have their own timers
+    }
+
+    private void provideBlimpsWithHeliDistance() {
+        for (Blimp blimp : blimps) {
             double distance = DistanceLine.getDistance(helicopter, blimp);
             blimp.updateDistanceFromMainPlayer(distance);
         }
-
     }
 
     private void checkBlimpHeliRefueling(double frameTime) {
@@ -128,18 +117,16 @@ public class Game extends Pane {
                 blimp.isRefueling(false);
                 continue;
             }
-
             if (Math.abs(helicopter.getSpeed() - blimp.getSpeed()) > 0.5) {
                 blimp.isRefueling(false);
                 continue;
             }
-
             // also check if their heading angle is within 20 degrees
-            if (smallestDifferenceBetweenAngles(helicopter.getHeading(), blimp.getHeading()) > 20) {
+            if (smallestDifferenceBetweenAngles(helicopter.getHeading(),
+                    blimp.getHeading()) > 20) {
                 blimp.isRefueling(false);
                 continue;
             }
-
 
             double siphonedFuel = blimp.siphonFuel(frameTime * 1000);
             helicopter.refuel(siphonedFuel);
@@ -155,7 +142,7 @@ public class Game extends Pane {
         return difference;
     }
 
-    private void rain(double frameTime) {
+    private void fillPonds(double frameTime) {
         for (Cloud cloud : clouds) {
             if (!cloud.isRaining()) continue;
             for (Pond pond : ponds) {
@@ -212,7 +199,8 @@ public class Game extends Pane {
             groundObjects.getChildren().add(helicopter);
 
         animationTimer.stop();
-        String msg = "Game Over! Would you like to play again?";
+        String msg = "You Lost! Helicopter crashed! Would you like to play " +
+                "again?";
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, msg,
                 ButtonType.YES, ButtonType.NO);
         alert.setOnHidden(e -> {
@@ -232,6 +220,8 @@ public class Game extends Pane {
         if (!groundObjects.getChildren().contains(helicopter))
             groundObjects.getChildren().add(helicopter);
 
+        // If the player decides to land before reach the desired score, they
+        // will have another chance to fly and seeding the clouds
         if (ponds.getAvgWaterLevel() < 80) return;
 
         animationTimer.stop();
@@ -263,9 +253,9 @@ public class Game extends Pane {
         clouds.clear();
         blimps.clear();
 
-        helipad = new Helipad(PAD_RADIUS, PAD_INITIAL_POSITION);
+        helipad = new Helipad(PAD_RADIUS, PAD_INIT_POS);
 
-        helicopter = new Helicopter(COPTER_INITIAL_POS, 25000);
+        helicopter = new Helicopter(COPTER_INIT_POS, 25000);
         helicopter.setOnCrash(this::handleCopterCrash);
         helicopter.setOnLandedAction(this::handleCopterLanded);
         helicopter.setLandingLocation(helipad);
@@ -274,7 +264,7 @@ public class Game extends Pane {
         // A pond won't spawn on the helipad, can be used to add more obstacles
         ArrayList<Bounds> pondObstacles = new ArrayList<>();
         pondObstacles.add(helipad.getBoundsInParent());
-        ponds = new Ponds(gameBounds, pondObstacles);
+        ponds = new Ponds(pondObstacles);
 
         ImageBackground background = new ImageBackground(GAME_WIDTH,
                 GAME_HEIGHT);
@@ -285,10 +275,9 @@ public class Game extends Pane {
             boundingBoxes.add(pond);
         }
 
-
-        groundObjects.getChildren().addAll(background, ponds, helipad, helicopter);
+        groundObjects.getChildren().addAll(background, ponds, helipad,
+                helicopter);
         airObjects.getChildren().addAll(clouds, blimps);
-
 
         getChildren().addAll(background, groundObjects, airObjects);
         getChildren().addAll(boundingBoxes, distanceLines);
